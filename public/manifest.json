@@ -1,0 +1,22 @@
+{
+  "name": "BELIEFX — Journal de trading",
+  "short_name": "BELIEFX",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0A0C10",
+  "theme_color": "#0A0C10",
+  "icons": [],
+  "share_target": {
+    "action": "/api/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "screenshot",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  }
+}
