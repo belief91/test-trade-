@@ -1,0 +1,360 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── DESIGN TOKENS ─── */
+:root {
+  --bg:        #0A0C10;
+  --surface:   #111318;
+  --raised:    #181C23;
+  --card:      #1E2330;
+  --border:    #2A2F3D;
+  --border-2:  #353B4D;
+  --ink:       #F0EEE9;
+  --sub:       #9CA3B0;
+  --muted:     #606674;
+  --accent:    #F0A500;
+  --accent-2:  #D4870A;
+  --win:       #22C55E;
+  --win-dim:   #16A34A;
+  --loss:      #EF4444;
+  --loss-dim:  #DC2626;
+  --blue:      #3B82F6;
+  --navy:      #0A0C10;
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.55);
+  --shadow-card-hover: 0 1px 2px rgba(0,0,0,0.5), 0 12px 32px -8px rgba(240,165,0,0.18);
+
+  /* RGB versions pour Tailwind */
+  --c-bg:      10 12 16;
+  --c-surface: 17 19 24;
+  --c-raised:  24 28 35;
+  --c-border:  42 47 61;
+  --c-ink:     240 238 233;
+  --c-muted:   96 102 116;
+  --c-accent:  240 165 0;
+  --c-win:     34 197 94;
+  --c-loss:    239 68 68;
+}
+
+[data-theme="light"] {
+  --bg:        #F4F5F7;
+  --surface:   #FFFFFF;
+  --raised:    #ECEEF2;
+  --card:      #FFFFFF;
+  --border:    #DDE0E8;
+  --border-2:  #C8CBD6;
+  --ink:       #0F1117;
+  --sub:       #4B5060;
+  --muted:     #9CA3AF;
+  --accent:    #D97706;
+  --accent-2:  #B45309;
+  --win:       #16A34A;
+  --loss:      #DC2626;
+  --navy:      #0A0C10;
+  --shadow-card: 0 1px 2px rgba(15,17,23,0.04), 0 8px 20px -6px rgba(15,17,23,0.10);
+  --shadow-card-hover: 0 1px 2px rgba(15,17,23,0.06), 0 12px 28px -6px rgba(217,119,6,0.16);
+
+  --c-bg:      244 245 247;
+  --c-surface: 255 255 255;
+  --c-raised:  236 238 242;
+  --c-border:  221 224 232;
+  --c-ink:     15 17 23;
+  --c-muted:   156 163 175;
+  --c-accent:  217 119 6;
+  --c-win:     22 163 74;
+  --c-loss:    220 38 38;
+}
+
+/* ─── BASE ─── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition: background 200ms, color 200ms;
+}
+
+h1,h2,h3,h4 { font-family: "Space Grotesk", sans-serif; font-weight: 600; }
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+
+/* ─── UTILITAIRES ─── */
+.tabular { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+.text-win { color: var(--win); }
+.text-loss { color: var(--loss); }
+.text-accent-custom { color: var(--accent); }
+.text-sub { color: var(--sub); }
+
+/* ─── COMPOSANTS ─── */
+@layer components {
+  /* Input */
+  .input {
+    width: 100%;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--ink);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(240,165,0,0.12);
+  }
+  .input::placeholder { color: var(--muted); }
+
+  /* Bouton principal */
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: filter 150ms, transform 80ms;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Bouton secondaire */
+  .btn-ghost {
+    background: transparent;
+    color: var(--sub);
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 150ms, color 150ms, background 150ms;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .btn-ghost:hover { border-color: var(--border-2); color: var(--ink); background: var(--raised); }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .card-p { padding: 20px; }
+
+  /* Badge */
+  .badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 99px; }
+  .badge-win { background: rgba(34,197,94,0.12); color: var(--win); }
+  .badge-loss { background: rgba(239,68,68,0.12); color: var(--loss); }
+  .badge-neutral { background: rgba(96,102,116,0.15); color: var(--sub); }
+  .badge-accent { background: rgba(240,165,0,0.12); color: var(--accent); }
+
+  /* Label de section */
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  /* Séparateur */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+  /* Ligne de trade (blotter) */
+  .blotter-row {
+    display: grid;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 120ms;
+    border-bottom: 1px solid var(--border);
+  }
+  .blotter-row:hover { background: var(--raised); }
+  .blotter-row:last-child { border-bottom: none; }
+
+  /* Stat card */
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    transition: border-color 200ms, box-shadow 200ms, transform 200ms;
+  }
+  .stat-card:hover { border-color: var(--border-2); box-shadow: var(--shadow-card-hover); transform: translateY(-2px); }
+  .stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 80%);
+  }
+}
+
+/* ─── FOND DASHBOARD ─── */
+.dashboard-bg {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+/* ─── HERO BAND ───
+   Bande toujours en navy profond, quel que soit le thème actif — c'est ce
+   qui crée le contraste fort façon Bitfonix : en thème sombre elle se fond
+   avec richesse (glow renforcé), en thème clair elle tranche nettement avec
+   le corps de page clair, exactement comme un header marketing premium. */
+.hero-band {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy);
+  isolation: isolate;
+}
+.hero-band__glow-a {
+  position: absolute;
+  top: -30%;
+  right: -8%;
+  width: 42%;
+  height: 160%;
+  background: radial-gradient(circle, rgba(240,165,0,0.30) 0%, transparent 68%);
+  filter: blur(10px);
+  pointer-events: none;
+  z-index: 0;
+}
+.hero-band__glow-b {
+  position: absolute;
+  bottom: -40%;
+  left: 5%;
+  width: 30%;
+  height: 120%;
+  background: radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%);
+  filter: blur(10px);
+  pointer-events: none;
+  z-index: 0;
+}
+.hero-band__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, black, transparent 85%);
+  z-index: 0;
+}
+.hero-band__content {
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme="dark"] .dashboard-bg {
+  background:
+    radial-gradient(ellipse 65% 45% at 85% 0%, rgba(240,165,0,0.10) 0%, transparent 62%),
+    radial-gradient(ellipse 55% 35% at 5% 100%, rgba(59,130,246,0.08) 0%, transparent 58%),
+    var(--bg);
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.animate-in { animation: fade-in 300ms ease both; }
+.animate-up { animation: slide-up 350ms ease both; }
+
+/* Pulse sur les lueurs */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.08); }
+}
+
+/* ─── SCREENSHOT COMPARE ─── */
+.screenshot-slot {
+  background: var(--raised);
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 150ms;
+}
+.screenshot-slot:hover { border-color: var(--accent); }
+.screenshot-slot img {
+  width: 100%;
+  height: 420px;
+  object-fit: contain;
+  background: var(--bg);
+  display: block;
+}
+.screenshot-empty {
+  height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ─── CAGES DE NAVIGATION "4D" ───
+   Boîtes oranges cliquables, majuscules, gras, avec un relief net (ombre +
+   reflet) qui réagit physiquement au survol (soulèvement) et au clic
+   (enfoncement) — d'où l'effet de profondeur "4D" (3D + réaction au temps). */
+.nav-cage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid rgba(240,165,0,0.35);
+  box-shadow:
+    0 2px 0 rgba(240,165,0,0.45),
+    0 4px 10px -2px rgba(240,165,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.25);
+  transform: translateY(0);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.nav-cage:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow:
+    0 4px 0 rgba(240,165,0,0.45),
+    0 8px 16px -4px rgba(240,165,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.nav-cage:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 0 rgba(240,165,0,0.45),
+    0 2px 6px -2px rgba(240,165,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.2);
+}
