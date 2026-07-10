@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut } from "lucide-react";
+import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut, LineChart } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { logout } from "../lib/auth";
 
@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/calculator", label: "Calculatrice", icon: Calculator },
   { href: "/goals", label: "Objectifs", icon: Target },
   { href: "/review", label: "Revue", icon: NotebookPen },
+  { href: "/cot", label: "COT", icon: LineChart },
 ];
 
 export default function Nav() {
