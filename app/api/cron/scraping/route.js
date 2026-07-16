@@ -1,28 +1,32 @@
 import { NextResponse } from "next/server";
-import { scraperCalendrierBC } from "../../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../../lib/back4app-server.js";
+
+// Donne le maximum de temps possible à cette route sur le plan Hobby Vercel
+// (avec Fluid Compute), pour absorber un éventuel cold start de Render
+// (le service gratuit se met en veille après inactivité, réveil ~30-60s).
+export const maxDuration = 60;
 
 /**
  * GET /api/cron/scraping
  *
  * Appelé automatiquement par Vercel Cron tous les jours à 19h00 UTC
- * (voir vercel.json). Scrape le calendrier économique BC (G10, fort
- * impact, semaine en cours) et sauvegarde dans Back4App.
+ * (voir vercel.json). Cette route NE scrape PLUS directement — elle
+ * délègue le travail à un service Render (pas de limite de temps
+ * d'exécution), récupère le JSON, puis sauvegarde dans Back4App ici
+ * (les clés Back4App restent uniquement côté Vercel, pas dupliquées
+ * sur Render).
  *
- * Sécurité : Vercel envoie automatiquement un header
- *   Authorization: Bearer <CRON_SECRET>
- * quand il déclenche ce cron. On vérifie ce header pour empêcher que
- * n'importe qui appelle cette route publiquement (ex: en devinant l'URL).
+ * ⚠️ ACTION REQUISE :
+ *   1. Déployer le service Render (dossier séparé beliefx-render-scraper/)
+ *   2. Ajouter dans Vercel (Environment Variables) ET .env.local :
+ *      - RENDER_SCRAPER_URL = https://<ton-service>.onrender.com
+ *      - RENDER_SCRAPER_SECRET = même valeur que celle définie sur Render
  *
- * ⚠️ ACTION REQUISE avant que ça fonctionne en production :
- *   1. Génère un secret : openssl rand -hex 32  (ou tout générateur de
- *      mot de passe, 32+ caractères)
- *   2. Ajoute-le dans Vercel : Project Settings > Environment Variables
- *      Nom : CRON_SECRET, Valeur : le secret généré
- *   3. Ajoute-le aussi dans ton .env.local pour les tests locaux
- *
- * Sans ça, la vérification ci-dessous renverra toujours 401, y compris
- * pour Vercel lui-même.
+ * Sécurité : double vérification —
+ *   - Vercel vérifie CRON_SECRET (que ce soit bien Vercel/cron qui appelle
+ *     cette route)
+ *   - Render vérifie RENDER_SCRAPER_SECRET (que ce soit bien cette route
+ *     Vercel qui l'appelle, pas n'importe qui d'autre)
  */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -33,7 +37,31 @@ export async function GET(request) {
   }
 
   try {
-    const evenements = await scraperCalendrierBC();
+    const renderUrl = process.env.RENDER_SCRAPER_URL;
+    const renderSecret = process.env.RENDER_SCRAPER_SECRET;
+
+    if (!renderUrl || !renderSecret) {
+      throw new Error(
+        "RENDER_SCRAPER_URL ou RENDER_SCRAPER_SECRET manquant dans les variables d'environnement"
+      );
+    }
+
+    const renderResponse = await fetch(`${renderUrl}/scrape/calendar-bc`, {
+      headers: { Authorization: `Bearer ${renderSecret}` },
+    });
+
+    if (!renderResponse.ok) {
+      throw new Error(
+        `Échec de l'appel au service Render : HTTP ${renderResponse.status}`
+      );
+    }
+
+    const { success, data: evenements, error: renderError } =
+      await renderResponse.json();
+
+    if (!success) {
+      throw new Error(renderError || "Le service Render a renvoyé une erreur");
+    }
 
     const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
     const objets = evenements.map((e) => {
