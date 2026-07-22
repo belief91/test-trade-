@@ -2,9 +2,8 @@ name: Cron Bond Yields
 
 on:
   schedule:
-    # 17h00 UTC = 20h00 GMT+3 (Madagascar)
     - cron: "0 17 * * *"
-  workflow_dispatch: {} # permet aussi de le déclencher manuellement depuis l'onglet Actions de GitHub
+  workflow_dispatch: {}
 
 jobs:
   scrape-bond-yields:
@@ -12,6 +11,3 @@ jobs:
     steps:
       - name: Scraper bond yields G10 (2Y/5Y/10Y)
         run: curl -sf https://test-trade-eosin.vercel.app/api/bond-yields
-
-      - name: Scraper courbe de taux (régions, 10Y)
-        run: curl -sf https://test-trade-eosin.vercel.app/api/bond-yield-curve
