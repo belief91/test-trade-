@@ -7,15 +7,15 @@ import { useState, useEffect, useCallback } from "react";
  * ------------------------------------------------------------------
  * A placer dans E:\trading-journal\components\CourbeDeTauxTable.jsx
  *
- * Reproduit le tableau TradingEconomics /bonds, groupé par région,
- * avec flèches colorées pour Chg et heatmap coloré pour Weekly/
- * Monthly/YTD/YoY (même esprit que ta capture d'écran).
+ * Consomme /api/bond-yields (2Y/5Y/10Y, 8 pays G10), groupé PAR PAYS
+ * (pas par région TE) — chaque pays affiche ses 3 maturités ensemble,
+ * triées 2Y -> 5Y -> 10Y.
  *
- * Consomme directement /api/bond-yield-curve (rapide, ~1-3s, car
- * cette route ne fait qu'UNE requête vers TE, contrairement à
- * bond-yields qui boucle sur 8 pages — pas besoin d'endpoint de
- * lecture séparé ici).
+ * Champs disponibles depuis bond-yields (différents de bond-yield-curve) :
+ * dayChgPercent / monthChgPercent / yearChgPercent (pas de weekly/ytd/yoy).
  */
+
+const ORDRE_MATURITE = { "2Y": 1, "5Y": 2, "10Y": 3 };
 
 function formatPercent(value) {
   if (value === null || value === undefined) return "—";
@@ -30,16 +30,6 @@ function heatmapClass(value) {
   return "";
 }
 
-function ChgArrow({ value }) {
-  if (value === null || value === undefined) return <span>—</span>;
-  const up = value >= 0;
-  return (
-    <span className={up ? "text-emerald-600" : "text-rose-600"}>
-      {up ? "▲" : "▼"} {Math.abs(value).toFixed(4)}
-    </span>
-  );
-}
-
 export default function CourbeDeTauxTable() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +40,7 @@ export default function CourbeDeTauxTable() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/bond-yield-curve");
+      const res = await fetch("/api/bond-yields");
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "Erreur inconnue");
       setData(json.data);
@@ -66,22 +56,25 @@ export default function CourbeDeTauxTable() {
     charger();
   }, [charger]);
 
-  // Regroupement par région, dans l'ordre d'apparition
-  const regions = [];
-  const parRegion = {};
+  // Regroupement PAR PAYS, maturités triées 2Y -> 5Y -> 10Y à l'intérieur
+  const pays = [];
+  const parPays = {};
   for (const item of data) {
-    const region = item.region || "Autre";
-    if (!parRegion[region]) {
-      parRegion[region] = [];
-      regions.push(region);
+    const key = item.country;
+    if (!parPays[key]) {
+      parPays[key] = [];
+      pays.push(key);
     }
-    parRegion[region].push(item);
+    parPays[key].push(item);
+  }
+  for (const key of pays) {
+    parPays[key].sort((a, b) => (ORDRE_MATURITE[a.maturity] ?? 99) - (ORDRE_MATURITE[b.maturity] ?? 99));
   }
 
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Courbe de taux — G10</h2>
+        <h2 className="text-lg font-semibold">Courbe de taux — G10 (2Y / 5Y / 10Y)</h2>
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <span className="text-xs text-gray-500">
@@ -104,48 +97,47 @@ export default function CourbeDeTauxTable() {
         </div>
       )}
 
-      {regions.map((region) => (
-        <div key={region} className="mb-6 overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-2 pr-4 font-medium text-gray-500">{region}</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">Yield</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">Chg</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">Weekly</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">Monthly</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">YTD</th>
-                <th className="text-right py-2 px-3 font-medium text-gray-500">YoY</th>
-                <th className="text-right py-2 pl-3 font-medium text-gray-500">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parRegion[region].map((item) => (
-                <tr key={item.symbol} className="border-b border-gray-100">
-                  <td className="py-2 pr-4 font-medium">{item.country}</td>
-                  <td className="text-right py-2 px-3 tabular-nums">{item.yield?.toFixed(4) ?? "—"}</td>
-                  <td className="text-right py-2 px-3 tabular-nums">
-                    <ChgArrow value={item.chgDaily} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 pr-4 font-medium text-gray-500">Pays</th>
+              <th className="text-left py-2 px-3 font-medium text-gray-500">Maturité</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500">Yield</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500">Day</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500">Month</th>
+              <th className="text-right py-2 px-3 font-medium text-gray-500">Year</th>
+              <th className="text-right py-2 pl-3 font-medium text-gray-500">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pays.map((country) =>
+              parPays[country].map((item, idx) => (
+                <tr
+                  key={`${item.currency}-${item.maturity}`}
+                  className={`border-b border-gray-100 ${idx === 0 ? "border-t-2 border-t-gray-300" : ""}`}
+                >
+                  <td className="py-2 pr-4 font-medium">
+                    {idx === 0 ? `${item.country} (${item.currency})` : ""}
                   </td>
-                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.weekly)}`}>
-                    {formatPercent(item.weekly)}
+                  <td className="py-2 px-3 text-gray-600">{item.maturity}</td>
+                  <td className="text-right py-2 px-3 tabular-nums">{item.yield?.toFixed(3) ?? "—"}</td>
+                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.dayChgPercent)}`}>
+                    {formatPercent(item.dayChgPercent)}
                   </td>
-                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.monthly)}`}>
-                    {formatPercent(item.monthly)}
+                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.monthChgPercent)}`}>
+                    {formatPercent(item.monthChgPercent)}
                   </td>
-                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.ytd)}`}>
-                    {formatPercent(item.ytd)}
-                  </td>
-                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.yoy)}`}>
-                    {formatPercent(item.yoy)}
+                  <td className={`text-right py-2 px-3 tabular-nums ${heatmapClass(item.yearChgPercent)}`}>
+                    {formatPercent(item.yearChgPercent)}
                   </td>
                   <td className="text-right py-2 pl-3 text-gray-500">{item.date}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {!loading && data.length === 0 && !error && (
         <p className="text-gray-500 text-sm">Aucune donnée disponible.</p>
