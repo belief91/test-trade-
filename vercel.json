@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/reconnaissance", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/scraping", "schedule": "0 19 * * *" }
+    { "path": "/api/cron/scraping", "schedule": "0 19 * * *" },
+    { "path": "/api/cron/central-bank-scrape", "schedule": "0 19 * * *" }
   ]
 }
