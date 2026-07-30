@@ -6,25 +6,27 @@ import { RefreshCw, Landmark } from "lucide-react";
 
 export default function BankCentralPage() {
   const [loading, setLoading] = useState(false);
-  const [resultat, setResultat] = useState(null);
-  const [erreur, setErreur] = useState(null);
+  const [resultats, setResultats] = useState(null);
+  const [erreurGlobale, setErreurGlobale] = useState(null);
 
   async function lancerScraping() {
     setLoading(true);
-    setErreur(null);
-    setResultat(null);
+    setErreurGlobale(null);
+    setResultats(null);
 
     try {
       const res = await fetch("/api/pipeline/run", { method: "POST" });
       const data = await res.json();
 
       if (data.status === "error") {
-        setErreur(data.message);
+        setErreurGlobale(data.message);
+      } else if (data.status === "skip") {
+        setResultats({ skipGlobal: true, reason: data.reason });
       } else {
-        setResultat(data);
+        setResultats({ liste: data.resultats });
       }
     } catch (err) {
-      setErreur(err.message);
+      setErreurGlobale(err.message);
     } finally {
       setLoading(false);
     }
@@ -61,40 +63,67 @@ export default function BankCentralPage() {
         {loading ? "Scraping en cours..." : "Recharger"}
       </button>
 
-      {resultat && resultat.status === "ok" && (
+      {resultats && resultats.skipGlobal && (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-          <p style={{ fontWeight: 700, marginBottom: 10 }}>
-            Document final — {resultat.documentFinal.length} paragraphe(s)
-          </p>
-          <ul style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 18 }}>
-            {resultat.documentFinal.map((p, i) => (
-              <li key={i} style={{ lineHeight: 1.5 }}>{p}</li>
-            ))}
-          </ul>
+          <p>Skip : {resultats.reason}</p>
         </div>
       )}
 
-      {resultat && resultat.status === "skip" && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: 16 }}>
-          <p>Skip : {resultat.reason}</p>
-          {resultat.dernierEventConnu && resultat.dernierEventConnu.length > 0 && (
+      {resultats && resultats.liste && resultats.liste.map((r, idx) => (
+        <div
+          key={idx}
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: 16,
+            marginBottom: 16,
+          }}
+        >
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>
+            {r.devise} — {r.categorie}
+          </p>
+
+          {r.status === "ok" && (
             <>
-              <p style={{ fontWeight: 700, marginTop: 12, marginBottom: 8 }}>
-                Dernier événement bancaire connu :
+              <p style={{ marginBottom: 8, opacity: 0.8 }}>
+                {r.documentFinal.length} phrase(s) retenue(s)
               </p>
-              <ul style={{ display: "flex", flexDirection: "column", gap: 10, paddingLeft: 18 }}>
-                {resultat.dernierEventConnu.map((p, i) => (
+              <ul style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 18 }}>
+                {r.documentFinal.map((p, i) => (
                   <li key={i} style={{ lineHeight: 1.5 }}>{p}</li>
                 ))}
               </ul>
             </>
           )}
-        </div>
-      )}
 
-      {erreur && (
+          {r.status === "skip" && (
+            <>
+              <p>Skip : {r.reason}</p>
+              {r.dernierEventConnu && r.dernierEventConnu.length > 0 && (
+                <>
+                  <p style={{ fontWeight: 700, marginTop: 12, marginBottom: 8 }}>
+                    Dernier événement connu ({r.devise}) :
+                  </p>
+                  <ul style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 18 }}>
+                    {r.dernierEventConnu.map((p, i) => (
+                      <li key={i} style={{ lineHeight: 1.5 }}>{p}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+
+          {r.status === "error" && (
+            <p style={{ color: "#e5484d" }}>Erreur : {r.message}</p>
+          )}
+        </div>
+      ))}
+
+      {erreurGlobale && (
         <div style={{ background: "var(--surface)", border: "1px solid #e5484d", borderRadius: 10, padding: 16, color: "#e5484d" }}>
-          Erreur : {erreur}
+          Erreur : {erreurGlobale}
         </div>
       )}
 

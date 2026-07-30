@@ -77,6 +77,21 @@ export async function GET(request) {
       obj.set("impact", e.impact);
       return obj;
     });
+    // app/api/cron/scraping/route.js — SECTION MODIFIÉE UNIQUEMENT
+// Ajouter cette étape de nettoyage AVANT saveAll(objets, ...)
+
+// Supprime toutes les entrées existantes avant de réinsérer le calendrier
+// frais — évite l'accumulation de doublons à chaque passage hebdomadaire.
+const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
+const requeteExistants = new Parse.Query(CentralBankCalendar);
+requeteExistants.limit(1000); // Back4App plafonne à 1000 par requête
+const existants = await requeteExistants.find({ useMasterKey: true });
+if (existants.length > 0) {
+  await Parse.Object.destroyAll(existants, { useMasterKey: true });
+}
+
+// ... puis la création des nouveaux objets et saveAll(objets, ...) comme avant
+
     await Parse.Object.saveAll(objets, { useMasterKey: true });
 
     return NextResponse.json({
