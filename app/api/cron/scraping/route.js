@@ -1,32 +1,17 @@
 import { NextResponse } from "next/server";
 import Parse from "../../../../lib/back4app-server.js";
 
-// Donne le maximum de temps possible à cette route sur le plan Hobby Vercel
-// (avec Fluid Compute), pour absorber un éventuel cold start de Render
-// (le service gratuit se met en veille après inactivité, réveil ~30-60s).
 export const maxDuration = 60;
 
 /**
  * GET /api/cron/scraping
  *
  * Appelé automatiquement par Vercel Cron tous les jours à 19h00 UTC
- * (voir vercel.json). Cette route NE scrape PLUS directement — elle
- * délègue le travail à un service Render (pas de limite de temps
- * d'exécution), récupère le JSON, puis sauvegarde dans Back4App ici
- * (les clés Back4App restent uniquement côté Vercel, pas dupliquées
- * sur Render).
- *
- * ⚠️ ACTION REQUISE :
- *   1. Déployer le service Render (dossier séparé beliefx-render-scraper/)
- *   2. Ajouter dans Vercel (Environment Variables) ET .env.local :
- *      - RENDER_SCRAPER_URL = https://<ton-service>.onrender.com
- *      - RENDER_SCRAPER_SECRET = même valeur que celle définie sur Render
- *
- * Sécurité : double vérification —
- *   - Vercel vérifie CRON_SECRET (que ce soit bien Vercel/cron qui appelle
- *     cette route)
- *   - Render vérifie RENDER_SCRAPER_SECRET (que ce soit bien cette route
- *     Vercel qui l'appelle, pas n'importe qui d'autre)
+ * (voir vercel.json). Scrape le calendrier BC via Render, puis
+ * VIDE la table CentralBankCalendar avant de réinsérer les données
+ * fraîches — évite l'accumulation de doublons à chaque passage
+ * hebdomadaire (le calendrier est une fenêtre roulante, pas un
+ * historique permanent).
  */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -64,6 +49,16 @@ export async function GET(request) {
     }
 
     const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
+
+    // Nettoyage : supprime toutes les entrées existantes avant de
+    // réinsérer le calendrier frais.
+    const requeteExistants = new Parse.Query(CentralBankCalendar);
+    requeteExistants.limit(1000);
+    const existants = await requeteExistants.find({ useMasterKey: true });
+    if (existants.length > 0) {
+      await Parse.Object.destroyAll(existants, { useMasterKey: true });
+    }
+
     const objets = evenements.map((e) => {
       const obj = new CentralBankCalendar();
       obj.set("date", e.date);
@@ -77,21 +72,6 @@ export async function GET(request) {
       obj.set("impact", e.impact);
       return obj;
     });
-    // app/api/cron/scraping/route.js — SECTION MODIFIÉE UNIQUEMENT
-// Ajouter cette étape de nettoyage AVANT saveAll(objets, ...)
-
-// Supprime toutes les entrées existantes avant de réinsérer le calendrier
-// frais — évite l'accumulation de doublons à chaque passage hebdomadaire.
-const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
-const requeteExistants = new Parse.Query(CentralBankCalendar);
-requeteExistants.limit(1000); // Back4App plafonne à 1000 par requête
-const existants = await requeteExistants.find({ useMasterKey: true });
-if (existants.length > 0) {
-  await Parse.Object.destroyAll(existants, { useMasterKey: true });
-}
-
-// ... puis la création des nouveaux objets et saveAll(objets, ...) comme avant
-
     await Parse.Object.saveAll(objets, { useMasterKey: true });
 
     return NextResponse.json({
