@@ -1,0 +1,31 @@
+name: Synchro COT TFF vers R2
+
+on:
+  schedule:
+    # Tous les vendredis à 22h00 UTC (= 1h00 du matin samedi à Madagascar, GMT+3)
+    # Marge de sécurité après la publication CFTC du vendredi 15h30 EST (~20h30 UTC)
+    - cron: "0 22 * * 5"
+  workflow_dispatch: # permet aussi de le lancer manuellement depuis l'onglet Actions sur GitHub
+
+jobs:
+  synchro-cot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Installer les dépendances
+        run: npm install
+
+      - name: Lancer la synchronisation COT vers R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: node lib/cot-historique-r2.js
