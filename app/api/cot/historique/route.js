@@ -2,7 +2,7 @@
 // Déclenche l'extraction historique CFTC 2025 -> aujourd'hui + upload vers Cloudflare R2
 // Utilisé par cron/tâche planifiée, ou manuellement via POST
 
-import { synchroniserHistoriqueCOT } from "@/lib/cot-historique-r2";
+import { synchroniserHistoriqueCOT } from "../../../../lib/cot-historique-r2";
 
 export async function POST() {
   try {
