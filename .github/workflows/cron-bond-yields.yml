@@ -1,13 +1,26 @@
-name: Cron Bond Yields
+name: Cron BELIEFX
 
 on:
   schedule:
+    # Bond yields : 17h00 UTC = 20h00 GMT+3 (Madagascar)
     - cron: "0 17 * * *"
-  workflow_dispatch: {}
+    # Calendrier BC : 21h00 UTC = 00h00 GMT+3 (Madagascar)
+    - cron: "0 21 * * *"
+  workflow_dispatch: {} # déclenchement manuel depuis l'onglet Actions GitHub
 
 jobs:
   scrape-bond-yields:
     runs-on: ubuntu-latest
+    # Ne tourne qu'à 17h UTC (pas à 21h)
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 17 * * *'
     steps:
       - name: Scraper bond yields G10 (2Y/5Y/10Y)
         run: curl -sf https://test-trade-eosin.vercel.app/api/bond-yields
+
+  scrape-calendrier-bc:
+    runs-on: ubuntu-latest
+    # Ne tourne qu'à 21h UTC (pas à 17h)
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * *'
+    steps:
+      - name: Scraper calendrier BC (00h GMT+3)
+        run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar

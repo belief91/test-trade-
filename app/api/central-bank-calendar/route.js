@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../lib/back4app-server.js";
+import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 
-/**
- * Sauvegarde les événements dans Back4App, classe "CentralBankCalendar".
- * Utilise saveAll pour les enregistrer en une seule opération batch plutôt
- * qu'un .save() par événement (plus efficace, moins de requêtes réseau).
- *
- * ⚠️ Suppose une classe Parse "CentralBankCalendar" (à créer dans le
- * dashboard Back4App si elle n'existe pas encore — Parse la crée
- * automatiquement au premier save si le schéma n'est pas verrouillé,
- * mais vérifie tes réglages de sécurité Back4App si ça échoue).
- */
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 async function sauvegarderVersBack4App(evenements) {
   const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
 
@@ -35,19 +29,29 @@ async function sauvegarderVersBack4App(evenements) {
 /**
  * GET /api/central-bank-calendar
  *
- * Retourne les événements de calendrier économique à fort impact (G10,
- * semaine en cours) déjà filtrés côté serveur TradingEconomics, et les
- * sauvegarde dans Back4App.
+ * Scrape les événements BC à fort impact (G10, semaine en cours),
+ * sauvegarde dans Back4App ET upload vers R2 pour la fusion journalière.
+ * Clé R2 : raw/{date}/calendrier-bc.json (date GMT+3)
  */
 export async function GET() {
   try {
     const evenements = await scraperCalendrierBC();
 
+    // 1. Sauvegarde Back4App (historique complet)
     await sauvegarderVersBack4App(evenements);
+
+    // 2. Upload R2 — données du jour pour la synthèse IA de 6h GMT+3
+    const cleR2 = genererCleDuJour("calendrier-bc");
+    await ecrireJSONDansR2(cleR2, {
+      scrapedAt: new Date().toISOString(),
+      count: evenements.length,
+      data: evenements,
+    });
 
     return NextResponse.json({
       success: true,
       count: evenements.length,
+      cleR2,
       data: evenements,
     });
   } catch (error) {
