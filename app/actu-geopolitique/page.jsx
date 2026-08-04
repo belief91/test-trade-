@@ -1,4 +1,4 @@
-import GeopoliticalNewsList from "../components/GeopoliticalNewsList";
+import GeopoliticalNewsList from "../../components/GeopoliticalNewsList";
 
 export const metadata = {
   title: "Actu Géopolitique — BELIEFX",
