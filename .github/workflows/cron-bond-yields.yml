@@ -6,12 +6,14 @@ on:
     - cron: "0 17 * * *"
     # Calendrier BC : 21h00 UTC = 00h00 GMT+3 (Madagascar)
     - cron: "0 21 * * *"
-  workflow_dispatch: {} # déclenchement manuel depuis l'onglet Actions GitHub
+    # Banque centrale (documents filtrés) : 19h30 UTC = 22h30 GMT+3
+    # Reste dans la même journée GMT+3 que l'événement bancaire
+    - cron: "30 19 * * *"
+  workflow_dispatch: {}
 
 jobs:
   scrape-bond-yields:
     runs-on: ubuntu-latest
-    # Ne tourne qu'à 17h UTC (pas à 21h)
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 17 * * *'
     steps:
       - name: Scraper bond yields G10 (2Y/5Y/10Y)
@@ -19,8 +21,16 @@ jobs:
 
   scrape-calendrier-bc:
     runs-on: ubuntu-latest
-    # Ne tourne qu'à 21h UTC (pas à 17h)
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * *'
     steps:
       - name: Scraper calendrier BC (00h GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar
+
+  scrape-banque-centrale:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 19 * * *'
+    steps:
+      - name: Pipeline banque centrale (22h30 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/central-bank-scrape \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
