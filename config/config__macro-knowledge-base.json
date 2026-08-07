@@ -1,0 +1,155 @@
+{
+  "version": "1.0",
+  "note": "Taxonomie par famille, indépendante de la devise. Le pays/devise est déjà porté par le champ 'devise' des événements du calendrier (CentralBankCalendar) — ce référentiel ne fait que classifier le NOM de l'indicateur. Les noms ci-dessous sont les termes génériques attendus ; à vérifier/ajuster contre les vrais libellés scrapés depuis TradingEconomics avant mise en production (voir champ 'a_verifier').",
+
+  "families": {
+    "employment": {
+      "label": "Emploi",
+      "primary": ["non farm payrolls", "unemployment rate"],
+      "secondary": [
+        "adp employment change",
+        "jolts job openings",
+        "initial jobless claims",
+        "continuing jobless claims",
+        "average hourly earnings",
+        "labor force participation rate",
+        "employment change"
+      ],
+      "confirm_with": ["employment", "consumption", "inflation"],
+      "fenetre_historique_jours": 60,
+      "sens_economique": "Une amélioration de l'emploi (baisse du chômage, hausse des créations de postes) est généralement hawkish pour la devise (pression sur les salaires → inflation → banque centrale plus stricte). Une dégradation est dovish.",
+      "specifique_devise": {
+        "USD": ["non farm payrolls", "jolts job openings", "adp employment change"]
+      },
+      "a_verifier": true
+    },
+
+    "inflation": {
+      "label": "Inflation",
+      "primary": ["cpi", "core cpi", "inflation rate"],
+      "secondary": [
+        "ppi",
+        "core ppi",
+        "pce price index",
+        "core pce price index",
+        "import prices",
+        "export prices"
+      ],
+      "confirm_with": ["inflation", "employment", "consumption"],
+      "fenetre_historique_jours": 90,
+      "sens_economique": "Une inflation qui dépasse le consensus est hawkish (probabilité accrue de hausse de taux ou de maintien restrictif). Une inflation sous consensus est dovish.",
+      "specifique_devise": {},
+      "a_verifier": true
+    },
+
+    "consumption": {
+      "label": "Consommation",
+      "primary": ["retail sales", "core retail sales"],
+      "secondary": [
+        "personal spending",
+        "personal income",
+        "consumer credit",
+        "consumer confidence",
+        "michigan consumer sentiment"
+      ],
+      "confirm_with": ["consumption", "employment", "activity", "growth"],
+      "fenetre_historique_jours": 60,
+      "sens_economique": "Une consommation forte soutient la croissance et peut alimenter l'inflation (effet hawkish indirect). Une consommation faible est un signal dovish sur la croissance.",
+      "specifique_devise": {},
+      "a_verifier": true
+    },
+
+    "growth": {
+      "label": "Croissance",
+      "primary": ["gdp growth rate"],
+      "secondary": [
+        "gdp growth rate qoq advance",
+        "gdp growth rate qoq final",
+        "durable goods orders",
+        "core durable goods orders",
+        "factory orders",
+        "business inventories"
+      ],
+      "confirm_with": ["growth", "activity", "employment", "consumption"],
+      "fenetre_historique_jours": 90,
+      "sens_economique": "Indicateur de synthèse : une croissance au-dessus du consensus est hawkish, en-dessous est dovish. À lire en dernier, après les familles qui la composent (emploi, consommation, activité).",
+      "specifique_devise": {},
+      "a_verifier": true
+    },
+
+    "activity": {
+      "label": "Activité économique",
+      "primary": ["ism manufacturing pmi", "ism services pmi", "manufacturing pmi", "services pmi"],
+      "secondary": [
+        "industrial production",
+        "capacity utilization",
+        "chicago pmi",
+        "philadelphia fed manufacturing index",
+        "empire state manufacturing index",
+        "ivey pmi s.a"
+      ],
+      "confirm_with": ["activity", "growth", "employment"],
+      "fenetre_historique_jours": 60,
+      "sens_economique": "Un PMI au-dessus de 50 signale une expansion (hawkish), en-dessous une contraction (dovish). La direction du changement compte autant que le niveau absolu.",
+      "specifique_devise": {
+        "USD": ["ism manufacturing pmi", "ism services pmi"],
+        "EUR": ["manufacturing pmi", "services pmi", "hcob manufacturing pmi", "hcob services pmi"],
+        "GBP": ["manufacturing pmi", "services pmi"],
+        "JPY": ["manufacturing pmi", "services pmi", "tankan large manufacturers index"],
+        "CAD": ["ivey pmi s.a"]
+      },
+      "a_verifier": true
+    },
+
+    "housing": {
+      "label": "Immobilier",
+      "primary": ["building permits", "housing starts"],
+      "secondary": [
+        "new home sales",
+        "existing home sales",
+        "pending home sales",
+        "nahb housing market index"
+      ],
+      "confirm_with": ["housing", "growth"],
+      "fenetre_historique_jours": 60,
+      "sens_economique": "Un secteur immobilier dynamique soutient la croissance et peut alimenter l'inflation via les coûts du logement. Principalement pertinent pour USD (indicateurs les plus suivis).",
+      "specifique_devise": {},
+      "a_verifier": true
+    },
+
+    "trade": {
+      "label": "Commerce extérieur",
+      "primary": ["balance of trade"],
+      "secondary": ["current account"],
+      "confirm_with": ["trade", "growth", "activity"],
+      "fenetre_historique_jours": 90,
+      "sens_economique": "Un excédent commercial en hausse est généralement favorable à la devise (demande de la monnaie locale pour régler les exportations). Un déficit qui se creuse est défavorable.",
+      "specifique_devise": {},
+      "a_verifier": true
+    },
+
+    "central_bank": {
+      "label": "Politique monétaire",
+      "primary": ["interest rate decision", "policy rate"],
+      "secondary": [
+        "rate statement",
+        "monetary policy statement",
+        "press conference",
+        "meeting minutes"
+      ],
+      "confirm_with": ["central_bank", "inflation", "employment"],
+      "fenetre_historique_jours": 45,
+      "sens_economique": "Source la plus directe de biais hawkish/dovish — à croiser avec le champ 'phrases' de CentralBankPipeline (déjà filtré par ton pipeline de mots-clés), pas seulement le calendrier.",
+      "specifique_devise": {},
+      "a_verifier": true
+    }
+  },
+
+  "devises_couvertes": ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"],
+
+  "instructions_matching": {
+    "normalisation": "minuscules, espaces multiples réduits, accents conservés (indicateurs en anglais donc non concerné en pratique)",
+    "methode": "correspondance par inclusion de sous-chaîne normalisée, pas égalité stricte, pour tolérer les variantes de libellé TradingEconomics (ex: 'cpi m/m' doit matcher 'cpi')",
+    "priorite_si_multiple_familles": "si un indicateur matche plusieurs familles (rare), prendre la première trouvée dans l'ordre : employment, inflation, consumption, growth, activity, housing, trade, central_bank"
+  }
+}

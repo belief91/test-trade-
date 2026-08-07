@@ -12,50 +12,60 @@ import { classifierCOT } from "../../../../lib/cot-classification";
 
 function construirePrompt(classification, vueMacro) {
   const c = classification;
-  return `Tu es un Analyste Quantitatif Senior spécialisé en positionnement COT/CFTC.
-ZÉRO hallucination : n'invente aucun chiffre, utilise UNIQUEMENT les données ci-dessous, déjà calculées.
+  const vueMacroTexte = vueMacro || "Non fournie";
+  return `═══════════════════════════════════════════════════════════
+RÔLE : Analyste Quantitatif Senior - Positionnement COT
+═══════════════════════════════════════════════════════════
 
-DEVISE : ${c.devise}
-DATE DU RAPPORT : ${c.reportDate}
+Spécialisé flux institutionnels COT/CFTC. ZÉRO hallucination :
+tous les chiffres ci-dessous sont déjà calculés en amont par un
+script déterministe (Z-Score, percentile, deltas, phase, divergence).
+Tu ne dois RIEN recalculer, seulement interpréter et rédiger.
 
-POSITIONNEMENT :
-Net Dealer : ${c.positionnement.netD}
-Net Asset Managers : ${c.positionnement.netAM}
-Net Leveraged Funds : ${c.positionnement.netLF}
-Net Total (AM+LF) : ${c.positionnement.netTotal}
+PRINCIPE : "Suis la foule au début (Z<1.5), fuis-la à la fin (Z>2.5)"
 
-SIGNAL DEALER (déjà interprété) :
-${c.signalDealer.lecture}
-Confirmation : ${c.signalDealer.confirmation}
+RAPPEL HIÉRARCHIE (pour ton interprétation uniquement) :
+Dealers (signal contrarien) > Asset Managers (direction) > Leveraged Funds (confirmation)
 
-LONG TERME (déjà calculé) :
-Z-Score Dealer : ${c.longTerme.zScoreD} (${c.longTerme.classifD})
-Z-Score Asset Managers : ${c.longTerme.zScoreAM} (${c.longTerme.classifAM})
-Z-Score Leveraged Funds : ${c.longTerme.zScoreLF} (${c.longTerme.classifLF})
-Z-Score Total : ${c.longTerme.zScoreTotal} (${c.longTerme.classifTotal})
-Percentile Total : ${c.longTerme.percentileTotal}e
+═══════════════════════════════════════════════════════════
 
-COURT TERME (déjà calculé) :
-${c.courtTerme.note ? c.courtTerme.note : `Δ4S : ${c.courtTerme.delta4S}% | Δ13S : ${c.courtTerme.delta13S}%`}
+📊 INPUT (déjà calculé, ne pas recalculer) :
 
-DIVERGENCE AM/LF (déjà classée) :
-${c.divergenceAmLf.type} → ${c.divergenceAmLf.recommandation}
+Devise : ${c.devise}
+Date : ${c.reportDate}
 
-DÉCISION (déjà calculée par les règles fixes) :
-Phase : ${c.decision.phase}
-Stratégie : ${c.decision.strategie}
-Sizing : ${c.decision.sizing}
-Biais : ${c.decision.biais}
-Invalidation : ${c.decision.invalidation}
+Positionnement : Net D=${c.positionnement.netD} / Net AM=${c.positionnement.netAM} / Net LF=${c.positionnement.netLF} / Net Total=${c.positionnement.netTotal}
 
-VUE MACRO DE L'UTILISATEUR : ${vueMacro || "Non fournie"}
+Signal Dealer : ${c.signalDealer.lecture} → ${c.signalDealer.confirmation}
 
-TA SEULE TÂCHE : rédige uniquement les deux champs suivants, sans recalculer aucun chiffre ci-dessus :
-1. ACTION : description précise de l'action à prendre, citant D/AM/LF + Z-Score
-2. CONFIANCE : Faible / Moyen / Élevé, avec une justification d'une phrase
+Long terme :
+  Z-Score D=${c.longTerme.zScoreD} (${c.longTerme.classifD}) | AM=${c.longTerme.zScoreAM} (${c.longTerme.classifAM})
+  LF=${c.longTerme.zScoreLF} (${c.longTerme.classifLF}) | Total=${c.longTerme.zScoreTotal} (${c.longTerme.classifTotal})
+  Percentile Total : ${c.longTerme.percentileTotal}e
 
-Réponds UNIQUEMENT en JSON strict, sans texte autour, sans balises markdown :
-{"action": "...", "confiance": "...", "justificationConfiance": "..."}`;
+Court terme : ${c.courtTerme.note ? c.courtTerme.note : `Δ4S=${c.courtTerme.delta4S}% | Δ13S=${c.courtTerme.delta13S}%`}
+
+Divergence AM/LF : ${c.divergenceAmLf.type} → ${c.divergenceAmLf.recommandation}
+
+Décision pré-calculée :
+  Phase=${c.decision.phase} | Stratégie=${c.decision.strategie} | Sizing=${c.decision.sizing}
+  Biais=${c.decision.biais} | Invalidation=${c.decision.invalidation}
+
+Vue macro utilisateur : ${vueMacroTexte}
+(si "Non fournie" : ignore ce critère dans justificationConfiance, ne le mentionne pas comme un manque)
+
+═══════════════════════════════════════════════════════════
+
+📤 OUTPUT — Réponds UNIQUEMENT en JSON strict, exactement ces 3 champs,
+sans texte autour, sans balises markdown (pas de \`\`\`) :
+
+{
+  "action": "Description précise de l'action, citant D/AM/LF + Z-Score (1-2 phrases max)",
+  "confiance": "Faible / Moyen / Élevé",
+  "justificationConfiance": "Deux phrase, tenant compte de la cohérence signal Dealer / phase / vue macro (si fournie)"
+}
+
+═══════════════════════════════════════════════════════════`;
 }
 
 async function appellerAnthropic(prompt) {

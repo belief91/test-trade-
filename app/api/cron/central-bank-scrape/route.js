@@ -6,14 +6,16 @@ import {
   recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
-import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
+import { ecrireJSONDansR2, genererCleDuJour, genererCleArchiveDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
 
 /**
  * GET /api/cron/central-bank-scrape
  * Boucle sur TOUTES les entrées "pending" du jour.
- * Upload vers R2 à la fin : raw/{date}/banque-centrale.json
+ * Upload vers R2 à la fin : raw/{date}/banque-centrale.json (instantané
+ * journalier pour la fusion IA) + database/banque-centrale/{date}.json
+ * (archive permanente, jamais écrasée).
  * Déclenché automatiquement à 00h15 GMT+3 (21h15 UTC) via GitHub Actions.
  */
 export async function GET(request) {
@@ -81,5 +83,14 @@ export async function GET(request) {
     data: resultats,
   });
 
-  return NextResponse.json({ status: "ok", cleR2, resultats });
+  // Archive permanente — database/banque-centrale/{date}.json, jamais
+  // écrasée ni nettoyée, backup durable en plus de Back4App
+  const cleArchive = genererCleArchiveDuJour("banque-centrale");
+  await ecrireJSONDansR2(cleArchive, {
+    archivedAt: new Date().toISOString(),
+    count: resultats.filter((r) => r.status === "ok").length,
+    data: resultats,
+  });
+
+  return NextResponse.json({ status: "ok", cleR2, cleArchive, resultats });
 }
