@@ -1,9 +1,13 @@
 // app/api/cot/route.js
-// Dans l'App Router, une route API s'appelle toujours "route.js"
-// et se place dans un dossier qui porte le nom de l'URL voulue.
-// Ici : app/api/cot/route.js  →  accessible sur  tonsite.com/api/cot
+// FIX : ajout de force-dynamic / fetchCache pour empêcher Next.js de
+// pré-rendre cette route en statique au build. Sans ça, la réponse était
+// figée à la date du build et jamais rafraîchie (cause confirmée du
+// symptôme "données COT disponibles seulement jusqu'au 3 août").
 
 import { fetchCOT } from "../../../lib/cot-tff-service";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export async function GET() {
   try {

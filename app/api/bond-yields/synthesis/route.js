@@ -1,4 +1,9 @@
 // app/api/bond-yields/synthesis/route.js
+// FIX : ajout de force-dynamic / fetchCache. Sans ça, cette route risquait
+// le même bug que /api/cot : cette route lit un fichier R2 qui change
+// chaque jour (bond-yield-analysis.json du jour), donc elle DOIT être
+// réévaluée à chaque requête, pas figée au build.
+//
 // Chaîne 100% automatique pour les 8 devises G10 :
 // 1. Lit bond-yield-analysis.json du jour depuis R2 (déjà pré-calculé)
 // 2. Pour chaque devise : injecte les spreads/forme/cohérence dans le prompt
@@ -6,6 +11,9 @@
 // 4. Sauvegarde le résultat sur R2 dans raw/{date}/bond-yield-synthesis.json
 
 import { lireJSONDepuisR2, ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 // Construit le prompt pour UNE devise, avec les chiffres déjà calculés par
 // bond-yield-curve-analysis.js — l'IA ne calcule rien, elle rédige uniquement.

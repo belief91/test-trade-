@@ -1,4 +1,12 @@
 // app/api/geopolitics-news/route.js
+//
+// FIX : ajout de force-dynamic / fetchCache. Sans ça, Next.js exécutait
+// réellement ce handler pendant "Generating static pages" au build,
+// causant l'appel réel au service Render + tentative d'écriture Back4App
+// avec Master Key indisponible en environnement de build (erreur visible
+// dans les logs : "Cannot use the Master Key, it has not been provided").
+// Risque associé : écritures partielles/doublons à chaque déploiement.
+
 import { NextResponse } from "next/server";
 import {
   upsertArticlesGeopolitiques,
@@ -6,6 +14,8 @@ import {
 } from "../../../lib/geopolitics-pipeline-service";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const maxDuration = 60;
 
 /**
