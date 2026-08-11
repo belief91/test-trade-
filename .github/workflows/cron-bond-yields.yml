@@ -6,9 +6,6 @@ on:
     - cron: "0 17 * * *"
     # Calendrier BC : 21h00 UTC = 00h00 GMT+3 (Madagascar)
     - cron: "0 21 * * *"
-    # Banque centrale (documents filtrés) : 19h30 UTC = 22h30 GMT+3
-    # Reste dans la même journée GMT+3 que l'événement bancaire
-    - cron: "30 19 * * *"
     # Actu Géopolitique (TV5MONDE) : toutes les 4h, ancré sur 5h15 GMT+3
     # 2h15 UTC = 5h15 GMT+3 / 6h15 UTC = 9h15 GMT+3 / 10h15 = 13h15 / 14h15 = 17h15 / 18h15 = 21h15 / 22h15 = 1h15 (j+1)
     - cron: "15 2,6,10,14,18,22 * * *"
@@ -28,15 +25,6 @@ jobs:
     steps:
       - name: Scraper calendrier BC (00h GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar
-
-  scrape-banque-centrale:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 19 * * *'
-    steps:
-      - name: Pipeline banque centrale (22h30 GMT+3)
-        run: |
-          curl -sf https://test-trade-eosin.vercel.app/api/cron/central-bank-scrape \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
   scrape-geopolitics-tv5monde:
     runs-on: ubuntu-latest
