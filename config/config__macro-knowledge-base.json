@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "note": "Taxonomie par famille, indépendante de la devise. Le pays/devise est déjà porté par le champ 'devise' des événements du calendrier (CentralBankCalendar) — ce référentiel ne fait que classifier le NOM de l'indicateur. Les noms ci-dessous sont les termes génériques attendus ; à vérifier/ajuster contre les vrais libellés scrapés depuis TradingEconomics avant mise en production (voir champ 'a_verifier').",
+  "version": "1.1",
+  "note": "Taxonomie par famille, indépendante de la devise. Le pays/devise est déjà porté par le champ 'devise' des événements du calendrier (CentralBankCalendar) — ce référentiel ne fait que classifier le NOM de l'indicateur. Les noms ci-dessous sont les termes génériques attendus ; à vérifier/ajuster contre les vrais libellés scrapés depuis TradingEconomics avant mise en production (voir champ 'a_verifier'). v1.1 : sens_economique reformulé de façon strictement factuelle — plus aucun jugement hawkish/dovish ; ce type d'interprétation reste la tâche exclusive du prompt IA, jamais du script.",
 
   "families": {
     "employment": {
@@ -17,7 +17,7 @@
       ],
       "confirm_with": ["employment", "consumption", "inflation"],
       "fenetre_historique_jours": 60,
-      "sens_economique": "Une amélioration de l'emploi (baisse du chômage, hausse des créations de postes) est généralement hawkish pour la devise (pression sur les salaires → inflation → banque centrale plus stricte). Une dégradation est dovish.",
+      "sens_economique": "Mesure le niveau et la variation de l'emploi (créations de postes, taux de chômage, salaires). Sert de contexte croisé aux familles inflation et consommation.",
       "specifique_devise": {
         "USD": ["non farm payrolls", "jolts job openings", "adp employment change"]
       },
@@ -37,7 +37,7 @@
       ],
       "confirm_with": ["inflation", "employment", "consumption"],
       "fenetre_historique_jours": 90,
-      "sens_economique": "Une inflation qui dépasse le consensus est hawkish (probabilité accrue de hausse de taux ou de maintien restrictif). Une inflation sous consensus est dovish.",
+      "sens_economique": "Mesure la variation des prix à la consommation et à la production. Se compare au consensus et à la publication précédente pour situer la trajectoire (accélération, ralentissement, stabilité).",
       "specifique_devise": {},
       "a_verifier": true
     },
@@ -54,7 +54,7 @@
       ],
       "confirm_with": ["consumption", "employment", "activity", "growth"],
       "fenetre_historique_jours": 60,
-      "sens_economique": "Une consommation forte soutient la croissance et peut alimenter l'inflation (effet hawkish indirect). Une consommation faible est un signal dovish sur la croissance.",
+      "sens_economique": "Mesure les dépenses et le revenu des ménages. Sert de contexte croisé aux familles emploi, activité et croissance.",
       "specifique_devise": {},
       "a_verifier": true
     },
@@ -72,7 +72,7 @@
       ],
       "confirm_with": ["growth", "activity", "employment", "consumption"],
       "fenetre_historique_jours": 90,
-      "sens_economique": "Indicateur de synthèse : une croissance au-dessus du consensus est hawkish, en-dessous est dovish. À lire en dernier, après les familles qui la composent (emploi, consommation, activité).",
+      "sens_economique": "Indicateur de synthèse de l'activité économique globale (PIB). À lire après les familles qui la composent (emploi, consommation, activité), dont il agrège partiellement les effets.",
       "specifique_devise": {},
       "a_verifier": true
     },
@@ -90,7 +90,7 @@
       ],
       "confirm_with": ["activity", "growth", "employment"],
       "fenetre_historique_jours": 60,
-      "sens_economique": "Un PMI au-dessus de 50 signale une expansion (hawkish), en-dessous une contraction (dovish). La direction du changement compte autant que le niveau absolu.",
+      "sens_economique": "Mesure l'activité manufacturière et de services via des indices de diffusion (seuil de référence à 50 : au-dessus = expansion déclarée par les répondants, en-dessous = contraction déclarée). La direction du changement d'un mois à l'autre est aussi informative que le niveau absolu.",
       "specifique_devise": {
         "USD": ["ism manufacturing pmi", "ism services pmi"],
         "EUR": ["manufacturing pmi", "services pmi", "hcob manufacturing pmi", "hcob services pmi"],
@@ -112,7 +112,7 @@
       ],
       "confirm_with": ["housing", "growth"],
       "fenetre_historique_jours": 60,
-      "sens_economique": "Un secteur immobilier dynamique soutient la croissance et peut alimenter l'inflation via les coûts du logement. Principalement pertinent pour USD (indicateurs les plus suivis).",
+      "sens_economique": "Mesure la construction et les ventes de logements. Principalement pertinent pour USD (indicateurs les plus suivis dans ce référentiel).",
       "specifique_devise": {},
       "a_verifier": true
     },
@@ -123,7 +123,7 @@
       "secondary": ["current account"],
       "confirm_with": ["trade", "growth", "activity"],
       "fenetre_historique_jours": 90,
-      "sens_economique": "Un excédent commercial en hausse est généralement favorable à la devise (demande de la monnaie locale pour régler les exportations). Un déficit qui se creuse est défavorable.",
+      "sens_economique": "Mesure la différence entre exportations et importations (excédent ou déficit) et le solde des transactions courantes.",
       "specifique_devise": {},
       "a_verifier": true
     },
@@ -139,7 +139,7 @@
       ],
       "confirm_with": ["central_bank", "inflation", "employment"],
       "fenetre_historique_jours": 45,
-      "sens_economique": "Source la plus directe de biais hawkish/dovish — à croiser avec le champ 'phrases' de CentralBankPipeline (déjà filtré par ton pipeline de mots-clés), pas seulement le calendrier.",
+      "sens_economique": "Mesure les décisions et communications de politique monétaire (taux directeur, déclarations). À croiser avec le champ 'phrases' de CentralBankPipeline (déjà filtré par le pipeline de mots-clés), pas seulement le calendrier — c'est au prompt IA, pas à ce script, d'en tirer un biais hawkish/dovish.",
       "specifique_devise": {},
       "a_verifier": true
     }
