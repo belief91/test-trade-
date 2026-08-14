@@ -1,12 +1,19 @@
 // app/api/cot/analysis/route.js
 //
+// FIX : renommé la clé de sortie R2 pour éviter la collision avec
+// app/api/cot/analyse/route.js (POST, bouton IA manuel), qui écrit déjà
+// sur raw/{date}/cot-analyse.json. Les deux routes sont indépendantes
+// (sources différentes, l'une avec IA l'autre sans) mais écrivaient au
+// même endroit — l'une écrasait silencieusement l'autre si les deux
+// tournaient le même jour.
+//
 // Route mécanique — AUCUN appel IA ici, uniquement du calcul déterministe
 // (même logique que /api/bond-yields/analysis). Utilise la base
 // historique COT déjà intégrée dans R2 (alimentée chaque vendredi par
-// cot-historique-r2.js) — pas besoin d'écrire de snapshot brut séparé.
+// cot-historique-r2.js).
 //
-// Nom de clé aligné sur la convention déjà en place dans R2 (confirmé
-// par raw/2026-08-03/cot-analyse.json) : "cot-analyse", pas "cot-analytics".
+// Sortie désormais : raw/{date}/cot-precalcul.json (distinct de
+// cot-analyse.json, réservé à la sortie IA du bouton manuel).
 
 import { fetchHistoriqueCOT } from "../../../../lib/cot-historique-r2";
 import { calculerAnalyticsToutesDevises } from "../../../../lib/cot-analytics";
@@ -30,12 +37,12 @@ export async function GET() {
       classifie[devise] = classifierCOT(analyse);
     }
 
-    const cleAnalyse = genererCleDuJour("cot-analyse");
-    await ecrireJSONDansR2(cleAnalyse, classifie);
+    const clePrecalcul = genererCleDuJour("cot-precalcul");
+    await ecrireJSONDansR2(clePrecalcul, classifie);
 
     return Response.json({
       success: true,
-      cleAnalyse,
+      clePrecalcul,
       devisesAnalysees: Object.keys(classifie).length,
       data: classifie,
     });
