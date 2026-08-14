@@ -1,0 +1,79 @@
+{
+  "version": "1.0",
+  "note": "Taxonomie par catégorie, mots-clés en français (source TV5MONDE). Aucun niveau de confiance/importance — toute actualité qui matche une catégorie est retenue à égalité, l'importance relative reste au jugement du prompt IA, jamais du script. À vérifier/compléter contre les vrais titres TV5MONDE avant mise en production (champ 'a_verifier').",
+
+  "categories": {
+    "conflit_arme": {
+      "label": "Conflit armé",
+      "mots_cles": [
+        "guerre", "conflit armé", "offensive militaire", "frappe", "bombardement",
+        "invasion", "cessez-le-feu", "trêve", "escalade militaire"
+      ],
+      "a_verifier": true
+    },
+
+    "sanctions": {
+      "label": "Sanctions économiques",
+      "mots_cles": [
+        "sanctions", "embargo", "gel des avoirs", "sanctions économiques",
+        "restrictions commerciales", "liste noire"
+      ],
+      "a_verifier": true
+    },
+
+    "guerre_commerciale": {
+      "label": "Tensions commerciales / tarifs douaniers",
+      "mots_cles": [
+        "droits de douane", "tarifs douaniers", "guerre commerciale",
+        "accord commercial", "négociations commerciales", "barrières commerciales",
+        "surtaxe"
+      ],
+      "a_verifier": true
+    },
+
+    "instabilite_politique": {
+      "label": "Élections / instabilité politique (économies majeures)",
+      "mots_cles": [
+        "élection présidentielle", "élections législatives", "motion de censure",
+        "démission", "coup d'État", "crise politique", "dissolution",
+        "vote de confiance"
+      ],
+      "a_verifier": true
+    },
+
+    "energie_matieres_premieres": {
+      "label": "Chocs énergie / matières premières",
+      "mots_cles": [
+        "prix du pétrole", "opep", "gazoduc", "pénurie énergétique",
+        "coupure d'approvisionnement", "détroit d'ormuz", "sanctions pétrolières",
+        "production pétrolière"
+      ],
+      "a_verifier": true
+    },
+
+    "banque_centrale_hors_calendrier": {
+      "label": "Déclarations de banques centrales hors calendrier officiel",
+      "mots_cles": [
+        "réserve fédérale", "banque centrale européenne", "banque d'angleterre",
+        "banque du japon", "déclaration surprise", "intervention monétaire",
+        "conférence de presse exceptionnelle"
+      ],
+      "a_verifier": true
+    },
+
+    "catastrophe_majeure": {
+      "label": "Catastrophe naturelle majeure (impact économique)",
+      "mots_cles": [
+        "séisme majeur", "tsunami", "ouragan", "inondations majeures",
+        "état d'urgence", "catastrophe naturelle"
+      ],
+      "a_verifier": true
+    }
+  },
+
+  "instructions_matching": {
+    "normalisation": "minuscules, accents conservés, ponctuation retirée, espaces multiples réduits",
+    "methode": "correspondance par inclusion de sous-chaîne normalisée sur titre + description concaténés",
+    "articles_sans_categorie": "un article qui ne matche aucune catégorie est exclu de l'écriture R2 (mais reste archivé dans Back4App GeopoliticalNews, non filtré)"
+  }
+}

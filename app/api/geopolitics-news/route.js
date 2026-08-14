@@ -1,41 +1,25 @@
 // app/api/geopolitics-news/route.js
 //
-// FIX : ajout de force-dynamic / fetchCache. Sans ça, Next.js exécutait
-// réellement ce handler pendant "Generating static pages" au build,
-// causant l'appel réel au service Render + tentative d'écriture Back4App
-// avec Master Key indisponible en environnement de build (erreur visible
-// dans les logs : "Cannot use the Master Key, it has not been provided").
-// Risque associé : écritures partielles/doublons à chaque déploiement.
+// AJOUT : filtrage par pertinence trading (lib/geopolitics-filter-service.js)
+// appliqué UNIQUEMENT à ce qui est écrit sur R2 (raw/{date}/geopolitics-tv5monde.json,
+// le fichier que l'IA consomme). Le scraping TV5MONDE et l'archive
+// Back4App (GeopoliticalNews, via upsertArticlesGeopolitiques) restent
+// INTACTS et non filtrés — aucune régression sur l'historique complet.
+// Corrige la consommation de tokens inutile : l'IA recevait auparavant
+// des dizaines d'articles bruts sans rapport avec le trading.
 
 import { NextResponse } from "next/server";
 import {
   upsertArticlesGeopolitiques,
   recupererArticlesDernieres24h,
 } from "../../../lib/geopolitics-pipeline-service";
+import { filtrerArticlesPertinentsTrading } from "../../../lib/geopolitics-filter-service";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const maxDuration = 60;
 
-/**
- * GET /api/geopolitics-news
- *
- * Scrape la rubrique "International" de TV5MONDE via le service Render,
- * upsert les articles dans Back4App (dédoublonnage sur `url`), relit la
- * fenêtre glissante des dernières 24h, et réécrit le JSON consolidé sur R2
- * (raw/{date}/geopolitics-tv5monde.json — même convention que les autres
- * modules, pour que la synthèse IA le retrouve automatiquement).
- *
- * Pas de secret requis (même pattern que /api/central-bank-calendar) car
- * cette route est appelée à la fois par :
- * - le bouton "Recharger" côté UI (appel direct depuis le navigateur)
- * - le cron GitHub Actions toutes les 4h, ancré sur 5h15 GMT+3
- *
- * Chaque exécution est idempotente : rejouer la route plusieurs fois de
- * suite ne duplique rien (dédoublonnage sur url) et régénère juste la
- * fenêtre 24h à jour.
- */
 export async function GET() {
   try {
     const renderUrl = process.env.RENDER_SCRAPER_URL;
@@ -59,24 +43,30 @@ export async function GET() {
       throw new Error(renderError || "Le service Render a renvoyé une erreur");
     }
 
+    // Archive complète, non filtrée — comportement inchangé
     const nouveaux = await upsertArticlesGeopolitiques(articlesScrapes);
     const fenetre24h = await recupererArticlesDernieres24h();
+
+    // Filtrage pertinence trading — UNIQUEMENT pour R2/IA
+    const fenetre24hFiltree = filtrerArticlesPertinentsTrading(fenetre24h);
 
     const cleR2 = genererCleDuJour("geopolitics-tv5monde");
     await ecrireJSONDansR2(cleR2, {
       generatedAt: new Date().toISOString(),
       source: "TV5MONDE (rubrique International)",
       nouveauxArticles: nouveaux,
-      count: fenetre24h.length,
-      data: fenetre24h,
+      countBrut: fenetre24h.length,
+      countFiltre: fenetre24hFiltree.length,
+      data: fenetre24hFiltree,
     });
 
     return NextResponse.json({
       success: true,
       nouveauxArticles: nouveaux,
-      count: fenetre24h.length,
+      countBrut: fenetre24h.length,
+      countFiltre: fenetre24hFiltree.length,
       cleR2,
-      data: fenetre24h,
+      data: fenetre24hFiltree,
     });
   } catch (error) {
     console.error("Erreur pipeline géopolitique TV5MONDE :", error);
