@@ -1,18 +1,15 @@
 // app/api/cron/central-bank-scrape/route.js
 //
-// AJOUT : en plus du fichier combiné raw/{date}/banque-centrale.json déjà
-// existant (conservé tel quel, aucune régression), écrit maintenant un
-// fichier PAR DEVISE sous banques-centrales/{devise}.json — accumulé au
-// fil des jours (lecture de l'existant + ajout, jamais d'écrasement),
-// contenant le document déjà filtré (documentFinal), pas le brut.
+// FIX (nouveau) : quand le scraping Render échoue (ex: HTTP 404 pour une
+// combinaison banque/catégorie non implémentée côté Render), le bloc
+// catch n'appelait JAMAIS enregistrerDocumentFinal() — l'entrée
+// CentralBankPipeline restait bloquée en statut "pending" indéfiniment,
+// jamais marquée "error" ni "skipped". Confirmé par l'archive R2 du
+// 11 août : l'échec Render (404, AUD/statement) était bien écrit sur R2,
+// mais l'entrée Back4App correspondante n'était jamais close.
 //
-// Dédoublonnage : une entrée par (date + categorie) — si le cron est
-// rejoué le même jour pour la même catégorie, l'ancienne entrée du jour
-// est remplacée plutôt que dupliquée.
-//
-// La liste des devises n'est PAS codée en dur : chaque devise réellement
-// détectée dans CentralBankPipeline ce jour-là obtient/alimente son
-// fichier — évite de se tromper sur la composition exacte du G10.
+// Conserve l'ajout précédent : fichiers R2 par devise
+// (banques-centrales/{devise}.json), accumulés sans écrasement.
 
 import { NextResponse } from "next/server";
 import {
@@ -30,12 +27,6 @@ import {
 
 export const maxDuration = 60;
 
-/**
- * Ajoute l'entrée du jour au fichier historique de la devise, sans
- * écraser les entrées précédentes. Remplace uniquement l'entrée du même
- * jour + même catégorie si elle existe déjà (rejouer le cron le même
- * jour ne duplique pas).
- */
 async function mettreAJourFichierDevise(devise, entreeDuJour) {
   const cleDevise = `banques-centrales/${devise}.json`;
 
@@ -44,7 +35,6 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
     const existant = await lireJSONDepuisR2(cleDevise);
     historique = existant.historique || [];
   } catch {
-    // Fichier pas encore créé pour cette devise — première écriture
     historique = [];
   }
 
@@ -55,8 +45,6 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
     (h) => !(h.date === dateDuJour && h.categorie === categorieDuJour)
   );
   historiqueFiltre.push(entreeDuJour);
-
-  // Tri chronologique, plus ancien en premier
   historiqueFiltre.sort((a, b) => new Date(a.date) - new Date(b.date));
 
   await ecrireJSONDansR2(cleDevise, {
@@ -69,15 +57,6 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
   return cleDevise;
 }
 
-/**
- * GET /api/cron/central-bank-scrape
- * Boucle sur TOUTES les entrées "pending" du jour.
- * Upload vers R2 à la fin : raw/{date}/banque-centrale.json (instantané
- * journalier pour la fusion IA) + database/banque-centrale/{date}.json
- * (archive permanente, jamais écrasée) + banques-centrales/{devise}.json
- * par devise (historique accumulé, jamais écrasé).
- * Déclenché automatiquement à 00h15 GMT+3 (21h15 UTC) via GitHub Actions.
- */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
@@ -152,14 +131,21 @@ export async function GET(request) {
     } catch (error) {
       console.error(`Erreur scraping ${banqueCentrale}/${categorie} :`, error);
       resultats.push({ devise, categorie, status: "error", message: error.message, documentFinal: [] });
-      // Pas d'écriture dans le fichier par devise en cas d'erreur — on ne
-      // veut pas polluer l'historique avec une entrée vide/en échec.
+
+      // FIX : ferme proprement l'entrée Back4App même en cas d'erreur —
+      // sans ça elle restait bloquée en "pending" indéfiniment. Utilise
+      // le fallback du dernier document connu plutôt qu'un vide sec,
+      // pour que le dashboard ait quand même quelque chose à montrer.
+      try {
+        const fallback = await recupererDernierEventConnu(devise);
+        const documentFallback = fallback ? fallback.get("documentFinal") : [];
+        await enregistrerDocumentFinal(entree.id, documentFallback);
+      } catch (errFermeture) {
+        console.error(`Erreur fermeture entrée ${banqueCentrale}/${categorie} après échec :`, errFermeture.message);
+      }
     }
   }
 
-  // Upload R2 — même clé que pipeline/run pour que la synthèse IA
-  // trouve toujours raw/{date}/banque-centrale.json peu importe
-  // lequel des deux a été déclenché ce jour-là.
   const cleR2 = genererCleDuJour("banque-centrale");
   await ecrireJSONDansR2(cleR2, {
     generatedAt: new Date().toISOString(),
@@ -168,8 +154,6 @@ export async function GET(request) {
     data: resultats,
   });
 
-  // Archive permanente — database/banque-centrale/{date}.json, jamais
-  // écrasée ni nettoyée, backup durable en plus de Back4App
   const cleArchive = genererCleArchiveDuJour("banque-centrale");
   await ecrireJSONDansR2(cleArchive, {
     archivedAt: new Date().toISOString(),
