@@ -1,25 +1,22 @@
 // app/api/central-bank-calendar/route.js
 //
-// FIX : macro-consolidator-service.js (construireContexteMacroDuJour)
-// existait déjà mais n'était jamais appelé ici. Cause confirmée de
-// "la nouvelle architecture calendrier par catégories ne fonctionne pas
-// dans R2 alors que tous les fichiers ont été poussés sur Git" — le code
-// était présent mais jamais branché au flux réel.
-//
-// Ajout : après l'upsert Back4App, on appelle le consolidateur pour
-// construire le contexte macro par famille, puis on écrit un fichier R2
-// SUPPLÉMENTAIRE dédié (raw/{date}/calendrier-consolide.json), distinct
-// du brut (raw/{date}/calendrier-bc.json). C'est ce fichier consolidé
-// que la synthèse IA doit consommer.
+// FIX : remplace l'archive quotidienne (database/calendrier-bc/{date}.json,
+// un nouveau fichier chaque jour, chacun redupliquant presque toute la
+// semaine scrapée) par UN SEUL fichier consolidé, mis à jour en continu
+// (fusion + dédoublonnage sur devise+evenement+date), jamais réécrit
+// depuis zéro. Élimine la croissance inutile du bucket R2 et les
+// opérations d'écriture redondantes.
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../lib/back4app-server.js";
-import { ecrireJSONDansR2, genererCleDuJour, genererCleArchiveDuJour } from "../../../lib/r2-client";
+import { ecrireJSONDansR2, lireJSONDepuisR2, genererCleDuJour } from "../../../lib/r2-client";
 import { construireContexteMacroDuJour } from "../../../lib/macro-consolidator-service";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+
+const CLE_ARCHIVE_CONSOLIDEE = "database/calendrier-bc/archive-consolide.json";
 
 async function upsertVersBack4App(evenements) {
   const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
@@ -56,20 +53,48 @@ async function upsertVersBack4App(evenements) {
 }
 
 /**
- * GET /api/central-bank-calendar
- *
- * Scrape -> upsert Back4App -> CONSOLIDATION par catégorie/famille macro
- * (macro-consolidator-service.js) -> upload R2. Le consolidateur ne
- * traite que les événements déjà publiés aujourd'hui (reel non vide) ;
- * ceux à venir sont archivés bruts sans contexte macro.
+ * Fusionne les événements de la semaine scrapée aujourd'hui dans
+ * l'archive consolidée unique, sans jamais créer de nouveau fichier daté.
+ * Dédoublonnage sur (devise+evenement+date) — un événement déjà présent
+ * est remplacé (ex: "reel" qui passe de vide à une vraie valeur une fois
+ * publié), jamais dupliqué.
  */
+async function fusionnerDansArchiveConsolidee(evenements) {
+  let archiveExistante = [];
+  try {
+    const existant = await lireJSONDepuisR2(CLE_ARCHIVE_CONSOLIDEE);
+    archiveExistante = existant.data || [];
+  } catch {
+    archiveExistante = []; // première exécution — pas encore de fichier
+  }
+
+  const parCle = new Map();
+  for (const e of archiveExistante) {
+    parCle.set(`${e.devise}|${e.evenement}|${e.date}`, e);
+  }
+  for (const e of evenements) {
+    parCle.set(`${e.devise}|${e.evenement}|${e.date}`, e);
+  }
+
+  const fusionnes = Array.from(parCle.values()).sort(
+    (a, b) => new Date(a.date) - new Date(b.date)
+  );
+
+  await ecrireJSONDansR2(CLE_ARCHIVE_CONSOLIDEE, {
+    updatedAt: new Date().toISOString(),
+    count: fusionnes.length,
+    data: fusionnes,
+  });
+
+  return { cle: CLE_ARCHIVE_CONSOLIDEE, count: fusionnes.length };
+}
+
 export async function GET() {
   try {
     const evenements = await scraperCalendrierBC();
 
     const { nouveaux, misAJour } = await upsertVersBack4App(evenements);
 
-    // Consolidation par famille macro (le maillon qui manquait)
     const contexteMacro = await construireContexteMacroDuJour(evenements);
 
     const cleR2 = genererCleDuJour("calendrier-bc");
@@ -79,8 +104,6 @@ export async function GET() {
       data: evenements,
     });
 
-    // Fichier consolidé — même convention raw/{date}/{module}.json,
-    // c'est CELUI que la synthèse IA doit consommer, pas le brut ci-dessus
     const cleR2Consolide = genererCleDuJour("calendrier-consolide");
     await ecrireJSONDansR2(cleR2Consolide, {
       generatedAt: new Date().toISOString(),
@@ -88,12 +111,10 @@ export async function GET() {
       data: contexteMacro,
     });
 
-    const cleArchive = genererCleArchiveDuJour("calendrier-bc");
-    await ecrireJSONDansR2(cleArchive, {
-      archivedAt: new Date().toISOString(),
-      count: evenements.length,
-      data: evenements,
-    });
+    // FIX : archive consolidée unique, fusionnée — remplace l'ancienne
+    // écriture quotidienne (genererCleArchiveDuJour), qui créait un
+    // nouveau fichier daté chaque jour au lieu de fusionner.
+    const archive = await fusionnerDansArchiveConsolidee(evenements);
 
     return NextResponse.json({
       success: true,
@@ -102,7 +123,7 @@ export async function GET() {
       misAJour,
       cleR2,
       cleR2Consolide,
-      cleArchive,
+      archive,
       data: evenements,
       contexteMacro,
     });
