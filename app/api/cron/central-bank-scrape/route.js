@@ -84,7 +84,7 @@ export async function GET(request) {
       const renderSecret = process.env.RENDER_SCRAPER_SECRET;
       if (!renderUrl || !renderSecret) throw new Error("RENDER_SCRAPER_URL ou RENDER_SCRAPER_SECRET manquant");
 
-      const renderResponse = await fetch(`${renderUrl}/scrape/central-bank-statement`, {
+      const renderResponse = await fetch(`${renderUrl}/scrape/central-bank`, {
         method: "POST",
         headers: { Authorization: `Bearer ${renderSecret}`, "Content-Type": "application/json" },
         body: JSON.stringify({ banque: banqueCentrale, categorie }),
