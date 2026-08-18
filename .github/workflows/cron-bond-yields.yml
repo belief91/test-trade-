@@ -4,10 +4,14 @@ on:
   schedule:
     # Bond yields : 17h00 UTC = 20h00 GMT+3 (Madagascar)
     - cron: "0 17 * * *"
-    # Calendrier BC : 21h00 UTC = 00h00 GMT+3 (Madagascar)
-    - cron: "0 21 * * *"
+    # Calendrier BC : FIX — déplacé de minuit (00h00 GMT+3, trop tôt pour
+    # capturer les publications en session Londres 09h/US 15h30) à
+    # 21h45 GMT+3, juste avant central-bank-scrape (22h00) et
+    # synthese-quotidienne (22h30). Capture désormais la quasi-totalité
+    # des publications G10 de la journée avant que le contexte macro du
+    # jour ne soit figé pour la synthèse du soir.
+    - cron: "45 18 * * *"
     # Actu Géopolitique (TV5MONDE) : toutes les 4h, ancré sur 5h15 GMT+3
-    # 2h15 UTC = 5h15 GMT+3 / 6h15 UTC = 9h15 GMT+3 / 10h15 = 13h15 / 14h15 = 17h15 / 18h15 = 21h15 / 22h15 = 1h15 (j+1)
     - cron: "15 2,6,10,14,18,22 * * *"
   workflow_dispatch: {}
 
@@ -21,9 +25,9 @@ jobs:
 
   scrape-calendrier-bc:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 21 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '45 18 * * *'
     steps:
-      - name: Scraper calendrier BC (00h GMT+3)
+      - name: Scraper calendrier BC (21h45 GMT+3, fin de journée)
         run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar
 
   scrape-geopolitics-tv5monde:
