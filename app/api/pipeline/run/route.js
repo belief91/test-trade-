@@ -1,6 +1,14 @@
 // app/api/pipeline/run/route.js
 // Déclenché par le bouton du dashboard — exécute tout le pipeline en une
 // fois pour TOUS les événements bancaires du jour, sans attendre les crons.
+//
+// FIX 1 : utilise désormais scraperBanqueCentraleViaRender()
+// (lib/central-bank-render-client.js) au lieu d'un appel fetch() dupliqué
+// avec l'ancien chemin cassé /scrape/central-bank-statement.
+//
+// FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est désormais
+// fermée proprement au lieu de rester bloquée en "pending" indéfiniment.
+
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
 import { DEVISE_TO_BANQUE, trouverCategoriePourEvenement } from "../../../../lib/central-bank-keywords";
@@ -10,6 +18,7 @@ import {
   enregistrerDocumentFinal,
   recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
+import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
@@ -41,10 +50,6 @@ export async function POST(request) {
       return NextResponse.json({ status: "skip", reason: "aucun événement bancaire aujourd'hui" });
     }
 
-    const renderUrl = process.env.RENDER_SCRAPER_URL;
-    const renderSecret = process.env.RENDER_SCRAPER_SECRET;
-    if (!renderUrl || !renderSecret) throw new Error("RENDER_SCRAPER_URL ou RENDER_SCRAPER_SECRET manquant");
-
     const resultats = [];
 
     for (const evt of evenementsBancaires) {
@@ -54,16 +59,7 @@ export async function POST(request) {
       });
 
       try {
-        const renderResponse = await fetch(`${renderUrl}/scrape/central-bank-statement`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${renderSecret}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ banque: evt.banqueCentrale, categorie: evt.categorie }),
-        });
-
-        if (!renderResponse.ok) throw new Error(`Échec appel Render : HTTP ${renderResponse.status}`);
-        const { success, texte, error: renderError } = await renderResponse.json();
-        if (!success) throw new Error(renderError || "Le service Render a renvoyé une erreur");
-
+        const texte = await scraperBanqueCentraleViaRender(evt.banqueCentrale, evt.categorie);
         const phrases = filtrerParagraphes(texte, evt.banqueCentrale);
 
         if (phrases.length === 0) {
@@ -79,11 +75,17 @@ export async function POST(request) {
       } catch (error) {
         console.error(`Erreur scraping ${evt.banqueCentrale}/${evt.categorie} :`, error);
         resultats.push({ devise: evt.devise, categorie: evt.categorie, status: "error", message: error.message, documentFinal: [] });
+
+        try {
+          const fallback = await recupererDernierEventConnu(evt.devise);
+          const documentFallback = fallback ? fallback.get("documentFinal") : [];
+          await enregistrerDocumentFinal(entree.id, documentFallback);
+        } catch (errFermeture) {
+          console.error(`Erreur fermeture entrée ${evt.banqueCentrale}/${evt.categorie} après échec :`, errFermeture.message);
+        }
       }
     }
 
-    // Upload R2 — agrège tous les événements du jour en un seul fichier
-    // Clé : raw/{date}/banque-centrale.json (date GMT+3, Madagascar)
     const cleR2 = genererCleDuJour("banque-centrale");
     await ecrireJSONDansR2(cleR2, {
       generatedAt: new Date().toISOString(),

@@ -1,0 +1,121 @@
+name: Cron BELIEFX
+
+# Fichier unique consolidé — remplace vercel.json (crons) ET l'ancien
+# cron-bond-yields.yml. Toute la planification du projet vit désormais
+# ici, un seul endroit à auditer. Chaque job correspond à UNE route,
+# jamais deux jobs différents n'appellent la même route à des horaires
+# différents (cause du bug de doublon banque centrale déjà rencontré).
+
+on:
+  schedule:
+    # Reconnaissance BC (matin) : 03h00 UTC = 06h00 GMT+3
+    - cron: "0 3 * * *"
+    # Scraping générique : 19h00 UTC = 22h00 GMT+3
+    - cron: "0 19 * * *"
+    # Banque centrale (documents filtrés) : 19h00 UTC = 22h00 GMT+3
+    - cron: "0 19 * * *"
+    # Bond yields (scraping brut) : 17h00 UTC = 20h00 GMT+3
+    - cron: "0 17 * * *"
+    # Bond yields (précalcul mécanique) : 17h15 UTC = 20h15 GMT+3
+    - cron: "15 17 * * *"
+    # COT (précalcul mécanique) : 17h30 UTC = 20h30 GMT+3
+    # ⚠️ CHEMIN À CONFIRMER — Belief a renommé la route COT lui-même
+    # (résolution du conflit analyse/analysis) ; remplacer
+    # /api/cot/PLACEHOLDER par le chemin réel avant activation.
+    - cron: "30 17 * * *"
+    # Calendrier BC : 18h45 UTC = 21h45 GMT+3 (fin de journée, capture
+    # les publications de session US avant la synthèse du soir)
+    - cron: "45 18 * * *"
+    # Synthèse quotidienne : 19h30 UTC = 22h30 GMT+3, lundi-vendredi
+    - cron: "30 19 * * 1-5"
+    # Synthèse hebdomadaire : 03h00 UTC = 06h00 GMT+3, samedi
+    - cron: "0 3 * * 6"
+    # Actu Géopolitique (TV5MONDE) : toutes les 4h, ancré sur 5h15 GMT+3
+    - cron: "15 2,6,10,14,18,22 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  reconnaissance-bc:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
+    steps:
+      - name: Reconnaissance BC (06h00 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/reconnaissance \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  scraping-generique:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 19 * * *'
+    steps:
+      - name: Scraping générique (22h00 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/scraping \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  banque-centrale-scrape:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 19 * * *'
+    steps:
+      - name: Pipeline banque centrale (22h00 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/central-bank-scrape \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  bond-yields-scrape:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 17 * * *'
+    steps:
+      - name: Scraper bond yields G10 (20h00 GMT+3)
+        run: curl -sf https://test-trade-eosin.vercel.app/api/bond-yields
+
+  bond-yields-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 17 * * *'
+    steps:
+      - name: Précalcul courbe de taux (20h15 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/bond-yields/analysis \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  cot-precalcul:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 17 * * *'
+    steps:
+      # ⚠️ Chemin à confirmer avant activation — voir commentaire en haut
+      - name: Précalcul COT (20h30 GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cot/PLACEHOLDER \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  calendrier-bc:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '45 18 * * *'
+    steps:
+      - name: Scraper + consolider calendrier BC (21h45 GMT+3)
+        run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar
+
+  synthese-quotidienne:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 19 * * 1-5'
+    steps:
+      - name: Synthèse IA quotidienne (22h30 GMT+3, lun-ven)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/synthese-quotidienne \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  synthese-hebdo:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * 6'
+    steps:
+      - name: Synthèse IA hebdomadaire (06h00 GMT+3, samedi)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/cron/synthese-hebdo \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  geopolitics-tv5monde:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 2,6,10,14,18,22 * * *'
+    steps:
+      - name: Scraper + filtrer actu géopolitique (toutes les 4h, ancré 5h15 GMT+3)
+        run: curl -sf https://test-trade-eosin.vercel.app/api/geopolitics-news
