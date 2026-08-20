@@ -19,9 +19,6 @@ on:
     # Bond yields (précalcul mécanique) : 17h15 UTC = 20h15 GMT+3
     - cron: "15 17 * * *"
     # COT (précalcul mécanique) : 17h30 UTC = 20h30 GMT+3
-    # ⚠️ CHEMIN À CONFIRMER — Belief a renommé la route COT lui-même
-    # (résolution du conflit analyse/analysis) ; remplacer
-    # /api/cot/PLACEHOLDER par le chemin réel avant activation.
     - cron: "30 17 * * *"
     # Calendrier BC : 18h45 UTC = 21h45 GMT+3 (fin de journée, capture
     # les publications de session US avant la synthèse du soir)
@@ -82,10 +79,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 17 * * *'
     steps:
-      # ⚠️ Chemin à confirmer avant activation — voir commentaire en haut
       - name: Précalcul COT (20h30 GMT+3)
         run: |
-          curl -sf https://test-trade-eosin.vercel.app/api/cot/PLACEHOLDER \
+          curl -sf https://test-trade-eosin.vercel.app/api/cot/analysis \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
   calendrier-bc:
