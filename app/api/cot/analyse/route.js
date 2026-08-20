@@ -1,12 +1,19 @@
 // app/api/cot/analyse/route.js
-// Chaîne 100% automatique pour les 7 devises :
-// 1. Trouve et lit le dernier cot.json sur R2
-// 2. Pour chaque devise : calcule Z-Score/percentile/deltas, puis classe selon les règles fixes
-// 3. Envoie les chiffres déjà calculés à l'API Anthropic (narratif ACTION + CONFIANCE uniquement)
-// 4. Sauvegarde le résultat combiné sur R2 dans raw/{date}/cot-analyse.json
-//    (même convention que tes autres modules, prêt pour ton étape de fusion)
+//
+// FIX : remplace trouverDernierFichierCOT() + lireJSONDepuisR2(), qui
+// cherchait un fichier raw/{date}/cot.json que plus rien n'écrit depuis
+// qu'on a retiré cette étape de app/api/cot/route.js. Ce bouton était
+// donc cassé depuis le début de nos échanges, jamais signalé jusqu'ici.
+//
+// Remplacé par fetchHistoriqueCOT(), la même source que la route
+// mécanique /api/cot/analysis — historique dédié déjà alimenté chaque
+// vendredi par cot-historique-r2.js, fiable et confirmé fonctionnel.
+//
+// Le reste (prompt, appel Anthropic, structure de sortie) reste
+// entièrement inchangé — c'est ton contenu métier, je ne l'ai pas touché.
 
-import { trouverDernierFichierCOT, lireJSONDepuisR2, ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
+import { fetchHistoriqueCOT } from "../../../../lib/cot-historique-r2";
+import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 import { analyserDevise } from "../../../../lib/cot-analytics";
 import { classifierCOT } from "../../../../lib/cot-classification";
 
@@ -103,11 +110,13 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const vueMacroParDevise = body.vueMacroParDevise || {};
 
-    // 1. Trouve et lit automatiquement le dernier fichier historique sur R2
-    const cleSource = await trouverDernierFichierCOT();
-    const parDevise = await lireJSONDepuisR2(cleSource);
+    // FIX : source de données remplacée — historique dédié au lieu du
+    // fichier raw/{date}/cot.json inexistant
+    const dateDebut = new Date();
+    dateDebut.setDate(dateDebut.getDate() - 110 * 7);
+    const dateDebutStr = dateDebut.toISOString().split("T")[0];
+    const parDevise = await fetchHistoriqueCOT(dateDebutStr);
 
-    // 2-3. Traite les 7 devises (séquentiellement pour respecter les limites de rate Anthropic)
     const devises = Object.keys(parDevise);
     const resultatParDevise = {};
     for (const devise of devises) {
@@ -120,11 +129,10 @@ export async function POST(request) {
 
     const resultatFinal = {
       generatedAt: new Date().toISOString(),
-      source: cleSource,
+      source: "fetchHistoriqueCOT (historique dédié)",
       devises: resultatParDevise
     };
 
-    // 4. Sauvegarde sur R2, même convention que les autres modules
     const cleDestination = genererCleDuJour("cot-analyse");
     await ecrireJSONDansR2(cleDestination, resultatFinal);
 
