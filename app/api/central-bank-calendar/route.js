@@ -1,20 +1,20 @@
 // app/api/central-bank-calendar/route.js
 //
-// FIX v2 : remplace la fusion manuelle par une reconstruction complete
-// depuis Back4App a chaque execution - inclut desormais l'historique
-// importe manuellement, pas seulement les scrapes futurs. Elimine aussi
-// la creation de fichiers dates (database/calendrier-bc/{date}.json).
+// FIX ARCHITECTURAL : R2 devient la SEULE source de verite pour
+// l'historique du calendrier (via lib/calendrier-archive-r2.js). Back4App
+// CentralBankCalendar garde un role reduit : permettre a
+// reconnaissance-service.js de detecter les evenements bancaires DU JOUR.
+// N'est plus jamais interroge comme entrepot historique croissant.
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../lib/back4app-server.js";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 import { construireContexteMacroDuJour } from "../../../lib/macro-consolidator-service";
+import { fusionnerDansArchiveCalendrier } from "../../../lib/calendrier-archive-r2";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-
-const CLE_ARCHIVE_CONSOLIDEE = "database/calendrier-bc/archive-consolide.json";
 
 async function upsertVersBack4App(evenements) {
   const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
@@ -50,36 +50,6 @@ async function upsertVersBack4App(evenements) {
   return { nouveaux, misAJour };
 }
 
-async function reconstruireArchiveConsolidee() {
-  const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
-  const requete = new Parse.Query(CentralBankCalendar);
-  requete.limit(10000);
-
-  const tous = await requete.find({ useMasterKey: true });
-
-  const data = tous
-    .map((obj) => ({
-      date: obj.get("date"),
-      heureGmt3: obj.get("heureGmt3"),
-      devise: obj.get("devise"),
-      evenement: obj.get("evenement"),
-      reel: obj.get("reel"),
-      precedent: obj.get("precedent"),
-      consensus: obj.get("consensus"),
-      prevision: obj.get("prevision"),
-      impact: obj.get("impact"),
-    }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  await ecrireJSONDansR2(CLE_ARCHIVE_CONSOLIDEE, {
-    updatedAt: new Date().toISOString(),
-    count: data.length,
-    data,
-  });
-
-  return { cle: CLE_ARCHIVE_CONSOLIDEE, count: data.length };
-}
-
 export async function GET() {
   try {
     const evenements = await scraperCalendrierBC();
@@ -102,7 +72,7 @@ export async function GET() {
       data: contexteMacro,
     });
 
-    const archive = await reconstruireArchiveConsolidee();
+    const archive = await fusionnerDansArchiveCalendrier(evenements);
 
     return NextResponse.json({
       success: true,
