@@ -1,16 +1,14 @@
 // app/api/central-bank-calendar/route.js
 //
-// FIX : remplace l'archive quotidienne (database/calendrier-bc/{date}.json,
-// un nouveau fichier chaque jour, chacun redupliquant presque toute la
-// semaine scrapée) par UN SEUL fichier consolidé, mis à jour en continu
-// (fusion + dédoublonnage sur devise+evenement+date), jamais réécrit
-// depuis zéro. Élimine la croissance inutile du bucket R2 et les
-// opérations d'écriture redondantes.
+// FIX v2 : remplace la fusion manuelle par une reconstruction complete
+// depuis Back4App a chaque execution - inclut desormais l'historique
+// importe manuellement, pas seulement les scrapes futurs. Elimine aussi
+// la creation de fichiers dates (database/calendrier-bc/{date}.json).
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../lib/back4app-server.js";
-import { ecrireJSONDansR2, lireJSONDepuisR2, genererCleDuJour } from "../../../lib/r2-client";
+import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 import { construireContexteMacroDuJour } from "../../../lib/macro-consolidator-service";
 
 export const dynamic = "force-dynamic";
@@ -52,41 +50,34 @@ async function upsertVersBack4App(evenements) {
   return { nouveaux, misAJour };
 }
 
-/**
- * Fusionne les événements de la semaine scrapée aujourd'hui dans
- * l'archive consolidée unique, sans jamais créer de nouveau fichier daté.
- * Dédoublonnage sur (devise+evenement+date) — un événement déjà présent
- * est remplacé (ex: "reel" qui passe de vide à une vraie valeur une fois
- * publié), jamais dupliqué.
- */
-async function fusionnerDansArchiveConsolidee(evenements) {
-  let archiveExistante = [];
-  try {
-    const existant = await lireJSONDepuisR2(CLE_ARCHIVE_CONSOLIDEE);
-    archiveExistante = existant.data || [];
-  } catch {
-    archiveExistante = []; // première exécution — pas encore de fichier
-  }
+async function reconstruireArchiveConsolidee() {
+  const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
+  const requete = new Parse.Query(CentralBankCalendar);
+  requete.limit(10000);
 
-  const parCle = new Map();
-  for (const e of archiveExistante) {
-    parCle.set(`${e.devise}|${e.evenement}|${e.date}`, e);
-  }
-  for (const e of evenements) {
-    parCle.set(`${e.devise}|${e.evenement}|${e.date}`, e);
-  }
+  const tous = await requete.find({ useMasterKey: true });
 
-  const fusionnes = Array.from(parCle.values()).sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
-  );
+  const data = tous
+    .map((obj) => ({
+      date: obj.get("date"),
+      heureGmt3: obj.get("heureGmt3"),
+      devise: obj.get("devise"),
+      evenement: obj.get("evenement"),
+      reel: obj.get("reel"),
+      precedent: obj.get("precedent"),
+      consensus: obj.get("consensus"),
+      prevision: obj.get("prevision"),
+      impact: obj.get("impact"),
+    }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   await ecrireJSONDansR2(CLE_ARCHIVE_CONSOLIDEE, {
     updatedAt: new Date().toISOString(),
-    count: fusionnes.length,
-    data: fusionnes,
+    count: data.length,
+    data,
   });
 
-  return { cle: CLE_ARCHIVE_CONSOLIDEE, count: fusionnes.length };
+  return { cle: CLE_ARCHIVE_CONSOLIDEE, count: data.length };
 }
 
 export async function GET() {
@@ -111,10 +102,7 @@ export async function GET() {
       data: contexteMacro,
     });
 
-    // FIX : archive consolidée unique, fusionnée — remplace l'ancienne
-    // écriture quotidienne (genererCleArchiveDuJour), qui créait un
-    // nouveau fichier daté chaque jour au lieu de fusionner.
-    const archive = await fusionnerDansArchiveConsolidee(evenements);
+    const archive = await reconstruireArchiveConsolidee();
 
     return NextResponse.json({
       success: true,
