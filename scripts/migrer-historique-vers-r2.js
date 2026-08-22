@@ -1,9 +1,7 @@
 // scripts/migrer-historique-vers-r2.js
 //
 // Migre l'historique calendrier DIRECTEMENT dans l'archive R2 unique,
-// sans passer par Back4App. Fix definitif au probleme d'import qui
-// n'atteignait jamais la bonne base Back4App malgre "Import termine"
-// confirme plusieurs fois.
+// sans passer par Back4App.
 //
 // Usage :
 //   node scripts/migrer-historique-vers-r2.js chemin/vers/fichier.json          (dry-run)
