@@ -1,11 +1,3 @@
 {
-  "crons": [
-    { "path": "/api/cron/reconnaissance", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/scraping", "schedule": "0 19 * * *" },
-    { "path": "/api/cron/central-bank-scrape", "schedule": "0 19 * * *" },
-    { "path": "/api/bond-yields/analysis", "schedule": "15 17 * * *" },
-    { "path": "/api/cot/analysis", "schedule": "30 17 * * *" },
-    { "path": "/api/cron/synthese-quotidienne", "schedule": "30 19 * * 1-5" },
-    { "path": "/api/cron/synthese-hebdo", "schedule": "0 3 * * 6" }
-  ]
+  "crons": []
 }
