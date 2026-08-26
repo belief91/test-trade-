@@ -5,6 +5,14 @@
 // CentralBankCalendar garde un role reduit : permettre a
 // reconnaissance-service.js de detecter les evenements bancaires DU JOUR.
 // N'est plus jamais interroge comme entrepot historique croissant.
+//
+// FIX PERF (26/08) : ajout de maxDuration en filet de securite. La cause
+// principale du blocage (lecture R2 repetee dans macro-consolidator-
+// service.js) est corrigee separement, mais cette route reste la plus
+// lourde du projet (scraping + boucle Back4App sequentielle + contexte
+// macro) et n'avait aucune limite explicite — elle heritait donc du
+// defaut du plan Vercel, jamais verifie. 60s aligne avec la limite deja
+// posee sur app/api/geopolitics-news/route.js.
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
@@ -15,6 +23,7 @@ import { fusionnerDansArchiveCalendrier } from "../../../lib/calendrier-archive-
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+export const maxDuration = 60;
 
 async function upsertVersBack4App(evenements) {
   const CentralBankCalendar = Parse.Object.extend("CentralBankCalendar");
