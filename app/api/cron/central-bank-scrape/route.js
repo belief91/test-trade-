@@ -13,6 +13,25 @@
 // La liste des devises n'est PAS codée en dur : chaque devise réellement
 // détectée dans CentralBankPipeline ce jour-là obtient/alimente son
 // fichier — évite de se tromper sur la composition exacte du G10.
+//
+// FIX RÉGRESSION (26/08) : cette route appelait directement Render avec
+// le chemin /scrape/central-bank-statement, qui n'existe pas (la route
+// réelle côté Render est /scrape/central-bank — voir index.js du repo
+// BELIEFX-scraping). Chaque exécution automatique recevait donc un 404
+// pour TOUTES les devises, silencieusement absorbé par le catch plus bas
+// (aucune écriture dans banques-centrales/{devise}.json en cas d'erreur,
+// par design). Confirmé par les logs Render : aucune requête
+// /scrape/central-bank* n'apparaît jamais dans les logs applicatifs.
+//
+// Le chemin correct existe déjà et est centralisé dans
+// lib/central-bank-render-client.js (créé au commit c679b26 du 19-20/08
+// pour exactement éviter ce genre de divergence), et déjà utilisé
+// correctement par app/api/pipeline/run/route.js (bouton manuel du
+// dashboard). Ce même commit avait remis par erreur l'ancien chemin cassé
+// ICI en même temps qu'il corrigeait pipeline/run — probablement un
+// copier-coller entre les deux fichiers pendant l'édition. Cette route
+// utilise désormais scraperBanqueCentraleViaRender(), comme pipeline/run,
+// pour ne plus jamais diverger entre les deux appelants.
 
 import { NextResponse } from "next/server";
 import {
@@ -20,6 +39,7 @@ import {
   enregistrerDocumentFinal,
   recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
+import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
 import {
   ecrireJSONDansR2,
@@ -101,19 +121,7 @@ export async function GET(request) {
     const devise = entree.get("deviseDetectee");
 
     try {
-      const renderUrl = process.env.RENDER_SCRAPER_URL;
-      const renderSecret = process.env.RENDER_SCRAPER_SECRET;
-      if (!renderUrl || !renderSecret) throw new Error("RENDER_SCRAPER_URL ou RENDER_SCRAPER_SECRET manquant");
-
-      const renderResponse = await fetch(`${renderUrl}/scrape/central-bank-statement`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${renderSecret}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ banque: banqueCentrale, categorie }),
-      });
-
-      if (!renderResponse.ok) throw new Error(`Échec appel Render : HTTP ${renderResponse.status}`);
-      const { success, texte, error: renderError } = await renderResponse.json();
-      if (!success) throw new Error(renderError || "Le service Render a renvoyé une erreur");
+      const texte = await scraperBanqueCentraleViaRender(banqueCentrale, categorie);
 
       const phrases = filtrerParagraphes(texte, banqueCentrale);
 
