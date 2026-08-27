@@ -16,27 +16,34 @@
 //
 // FIX RÉGRESSION (26/08) : cette route appelait directement Render avec
 // le chemin /scrape/central-bank-statement, qui n'existe pas (la route
-// réelle côté Render est /scrape/central-bank — voir index.js du repo
-// BELIEFX-scraping). Chaque exécution automatique recevait donc un 404
-// pour TOUTES les devises, silencieusement absorbé par le catch plus bas
-// (aucune écriture dans banques-centrales/{devise}.json en cas d'erreur,
-// par design). Confirmé par les logs Render : aucune requête
-// /scrape/central-bank* n'apparaît jamais dans les logs applicatifs.
+// réelle côté Render est /scrape/central-bank). Corrigé — utilise
+// scraperBanqueCentraleViaRender() (lib/central-bank-render-client.js),
+// comme app/api/pipeline/run/route.js.
 //
-// Le chemin correct existe déjà et est centralisé dans
-// lib/central-bank-render-client.js (créé au commit c679b26 du 19-20/08
-// pour exactement éviter ce genre de divergence), et déjà utilisé
-// correctement par app/api/pipeline/run/route.js (bouton manuel du
-// dashboard). Ce même commit avait remis par erreur l'ancien chemin cassé
-// ICI en même temps qu'il corrigeait pipeline/run — probablement un
-// copier-coller entre les deux fichiers pendant l'édition. Cette route
-// utilise désormais scraperBanqueCentraleViaRender(), comme pipeline/run,
-// pour ne plus jamais diverger entre les deux appelants.
+// FIX CRITIQUE #2 (27/08) : le catch ci-dessous ne faisait RIEN sur
+// l'entrée Back4App en échec — elle restait bloquée à "pending" avec la
+// dateTexte du jour de sa détection. lireReconnaissancesDuJour() ne
+// cherchant que la dateTexte d'aujourd'hui, toute entrée en échec
+// devenait orpheline dès le lendemain : plus aucun cron ne la retente,
+// silencieusement, pour toujours. C'est la vraie cause de l'absence de
+// AUD (RBA minutes du 25/08) dans banques-centrales/AUD.json — pas
+// seulement le bug de chemin Render #1, qui explique l'échec initial,
+// mais ce bug #2 qui empêchait toute récupération une fois le #1 corrigé.
+//
+// Corrigé conjointement avec lib/central-bank-pipeline-service.js :
+// - le catch appelle désormais enregistrerEchecScraping() (trace
+//   l'échec, incrémente un compteur de tentatives, garde l'entrée
+//   "pending" pour qu'elle soit retentée)
+// - lireReconnaissancesDuJour() regarde maintenant une fenêtre de 4
+//   jours glissants (pas seulement "aujourd'hui"), donc l'entrée AUD du
+//   25/08 sera automatiquement reprise au prochain cron, sans action
+//   manuelle.
 
 import { NextResponse } from "next/server";
 import {
   lireReconnaissancesDuJour,
   enregistrerDocumentFinal,
+  enregistrerEchecScraping,
   recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
@@ -91,12 +98,12 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
 
 /**
  * GET /api/cron/central-bank-scrape
- * Boucle sur TOUTES les entrées "pending" du jour.
+ * Boucle sur TOUTES les entrées "pending" à traiter (aujourd'hui +
+ * rattrapage jusqu'à 4 jours en arrière, voir lireReconnaissancesDuJour).
  * Upload vers R2 à la fin : raw/{date}/banque-centrale.json (instantané
  * journalier pour la fusion IA) + database/banque-centrale/{date}.json
  * (archive permanente, jamais écrasée) + banques-centrales/{devise}.json
  * par devise (historique accumulé, jamais écrasé).
- * Déclenché automatiquement à 00h15 GMT+3 (21h15 UTC) via GitHub Actions.
  */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -109,7 +116,7 @@ export async function GET(request) {
   const entrees = await lireReconnaissancesDuJour();
 
   if (entrees.length === 0) {
-    return NextResponse.json({ status: "skip", reason: "aucune entrée pending aujourd'hui" });
+    return NextResponse.json({ status: "skip", reason: "aucune entrée pending a traiter" });
   }
 
   const resultats = [];
@@ -159,9 +166,19 @@ export async function GET(request) {
 
     } catch (error) {
       console.error(`Erreur scraping ${banqueCentrale}/${categorie} :`, error);
-      resultats.push({ devise, categorie, status: "error", message: error.message, documentFinal: [] });
-      // Pas d'écriture dans le fichier par devise en cas d'erreur — on ne
-      // veut pas polluer l'historique avec une entrée vide/en échec.
+      const entreeMaj = await enregistrerEchecScraping(entree.id, error.message);
+      resultats.push({
+        devise,
+        categorie,
+        status: "error",
+        message: error.message,
+        tentatives: entreeMaj.get("tentatives"),
+        documentFinal: [],
+      });
+      // Toujours pas d'écriture dans banques-centrales/{devise}.json en cas
+      // d'échec (on ne pollue pas l'historique avec une entrée vide) — mais
+      // l'entrée Back4App est maintenant tracée et sera retentée au
+      // prochain cron tant que tentatives < 3.
     }
   }
 
