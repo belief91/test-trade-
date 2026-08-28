@@ -1,38 +1,13 @@
 // app/api/cron/central-bank-scrape/route.js
 //
-// AJOUT : en plus du fichier combiné raw/{date}/banque-centrale.json déjà
-// existant (conservé tel quel, aucune régression), écrit maintenant un
-// fichier PAR DEVISE sous banques-centrales/{devise}.json — accumulé au
-// fil des jours (lecture de l'existant + ajout, jamais d'écrasement),
-// contenant le document déjà filtré (documentFinal), pas le brut.
+// Historique des fix : chemin Render cassé (26/08), entrées orphelines +
+// bug de requête Parse sur champ absent (27-28/08), trace R2 même si
+// rien à traiter (28/08).
 //
-// Dédoublonnage : une entrée par (date + categorie) — si le cron est
-// rejoué le même jour pour la même catégorie, l'ancienne entrée du jour
-// est remplacée plutôt que dupliquée.
-//
-// La liste des devises n'est PAS codée en dur : chaque devise réellement
-// détectée dans CentralBankPipeline ce jour-là obtient/alimente son
-// fichier — évite de se tromper sur la composition exacte du G10.
-//
-// FIX RÉGRESSION (26/08) : cette route appelait directement Render avec
-// le chemin /scrape/central-bank-statement, qui n'existe pas. Corrigé —
-// utilise scraperBanqueCentraleViaRender() (lib/central-bank-render-client.js).
-//
-// FIX CRITIQUE #2 (27/08) : le catch ne faisait RIEN sur l'entrée
-// Back4App en échec — elle restait bloquée à "pending" pour toujours.
-// Corrigé conjointement avec lib/central-bank-pipeline-service.js :
-// enregistrerEchecScraping() + fenêtre de rattrapage de 4 jours.
-//
-// FIX CRITIQUE #3 (28/08) : le fix #2 n'a rien produit en production —
-// bug de requête Parse (lessThan sur champ absent = exclusion
-// silencieuse), corrigé dans central-bank-pipeline-service.js le même
-// jour. CE bug-là a produit un silence total pendant ~24h : la requête
-// renvoyait 0 résultat, et cette route retournait "skip" SANS JAMAIS
-// toucher R2 — aucune trace, indiscernable d'un cron qui n'a jamais
-// tourné. D'où le fix d'observabilité ci-dessous : même un "rien à
-// traiter" laisse maintenant une trace horodatée sur R2, pour que ce
-// genre de silence soit visible et diagnosticable immédiatement la
-// prochaine fois, au lieu de rester invisible pendant un jour entier.
+// FIX 5 (28/08) : recupererDernierEventConnu() filtre désormais aussi
+// par catégorie et retourne un objet étiqueté au lieu de l'objet Parse
+// brut — voir lib/central-bank-pipeline-service.js. Répercuté ici :
+// resultats porte maintenant estDonneeSecours + dateOriginale.
 
 import { NextResponse } from "next/server";
 import {
@@ -52,11 +27,6 @@ import {
 
 export const maxDuration = 60;
 
-/**
- * Ajoute l'entrée du jour au fichier historique de la devise, sans
- * écraser les entrées précédentes. Remplace uniquement l'entrée du même
- * jour + même catégorie si elle existe déjà.
- */
 async function mettreAJourFichierDevise(devise, entreeDuJour) {
   const cleDevise = `banques-centrales/${devise}.json`;
 
@@ -87,11 +57,6 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
   return cleDevise;
 }
 
-/**
- * GET /api/cron/central-bank-scrape
- * Boucle sur TOUTES les entrées "pending" à traiter (aujourd'hui +
- * rattrapage jusqu'à 4 jours en arrière).
- */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
@@ -103,12 +68,6 @@ export async function GET(request) {
   const entrees = await lireReconnaissancesDuJour();
 
   if (entrees.length === 0) {
-    // FIX OBSERVABILITÉ (28/08) : avant, un "rien à traiter" ne touchait
-    // jamais R2 — indiscernable d'un cron qui n'a jamais tourné, ou d'un
-    // bug de requête qui exclut tout silencieusement (exactement ce qui
-    // s'est passé pendant ~24h avec le bug lessThan/champ-absent corrigé
-    // dans central-bank-pipeline-service.js). Désormais, une exécution
-    // "vide" laisse quand même une trace horodatée sur R2.
     const cleR2Vide = genererCleDuJour("banque-centrale");
     await ecrireJSONDansR2(cleR2Vide, {
       generatedAt: new Date().toISOString(),
@@ -136,9 +95,18 @@ export async function GET(request) {
 
       if (phrases.length === 0) {
         await enregistrerDocumentFinal(entree.id, []);
-        const fallback = await recupererDernierEventConnu(devise);
-        const documentFinal = fallback ? fallback.get("documentFinal") : [];
-        resultats.push({ devise, banqueCentrale, categorie, status: "skip", reason: "aucun mot-clé trouvé", documentFinal });
+        const fallback = await recupererDernierEventConnu(devise, categorie);
+        const documentFinal = fallback ? fallback.documentFinal : [];
+        resultats.push({
+          devise,
+          banqueCentrale,
+          categorie,
+          status: "skip",
+          reason: "aucun mot-clé trouvé",
+          documentFinal,
+          estDonneeSecours: !!fallback,
+          dateOriginale: fallback ? fallback.dateOriginale : null,
+        });
 
         if (devise) {
           await mettreAJourFichierDevise(devise, {
@@ -147,6 +115,8 @@ export async function GET(request) {
             categorie,
             status: "skip",
             documentFinal,
+            estDonneeSecours: !!fallback,
+            dateOriginale: fallback ? fallback.dateOriginale : null,
           });
         }
         continue;
@@ -154,7 +124,7 @@ export async function GET(request) {
 
       const saved = await enregistrerDocumentFinal(entree.id, phrases);
       const documentFinal = saved.get("documentFinal");
-      resultats.push({ devise, banqueCentrale, categorie, status: "ok", documentFinal });
+      resultats.push({ devise, banqueCentrale, categorie, status: "ok", documentFinal, estDonneeSecours: false });
 
       if (devise) {
         await mettreAJourFichierDevise(devise, {
@@ -163,6 +133,7 @@ export async function GET(request) {
           categorie,
           status: "ok",
           documentFinal,
+          estDonneeSecours: false,
         });
       }
 

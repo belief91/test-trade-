@@ -2,12 +2,21 @@
 // Déclenché par le bouton du dashboard — exécute tout le pipeline en une
 // fois pour TOUS les événements bancaires du jour, sans attendre les crons.
 //
-// FIX 1 : utilise désormais scraperBanqueCentraleViaRender()
-// (lib/central-bank-render-client.js) au lieu d'un appel fetch() dupliqué
-// avec l'ancien chemin cassé /scrape/central-bank-statement.
+// FIX 1 : utilise scraperBanqueCentraleViaRender() au lieu de l'ancien
+// chemin cassé /scrape/central-bank-statement.
+// FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est fermée
+// proprement au lieu de rester bloquée en "pending" indéfiniment.
 //
-// FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est désormais
-// fermée proprement au lieu de rester bloquée en "pending" indéfiniment.
+// FIX 3 (28/08) : recupererDernierEventConnu() filtre désormais aussi
+// par catégorie et retourne un objet étiqueté { documentFinal,
+// estDonneeSecours, dateOriginale, evenementOriginal } au lieu de
+// l'objet Parse brut — voir lib/central-bank-pipeline-service.js pour
+// le détail du bug (donnée périmée affichée sans étiquette). Répercuté
+// ici : resultats et le JSON écrit sur R2 portent maintenant
+// explicitement estDonneeSecours + dateOriginale quand c'est le cas,
+// pour que le dashboard et la synthèse IA puissent distinguer "vraie
+// publication du jour" de "dernière donnée connue, potentiellement
+// ancienne".
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -64,24 +73,42 @@ export async function POST(request) {
 
         if (phrases.length === 0) {
           await enregistrerDocumentFinal(entree.id, []);
-          const fallback = await recupererDernierEventConnu(evt.devise);
-          resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "skip", reason: "aucun mot-clé trouvé", documentFinal: fallback ? fallback.get("documentFinal") : [] });
+          const fallback = await recupererDernierEventConnu(evt.devise, evt.categorie);
+          resultats.push({
+            devise: evt.devise,
+            banqueCentrale: evt.banqueCentrale,
+            categorie: evt.categorie,
+            status: "skip",
+            reason: "aucun mot-clé trouvé",
+            documentFinal: fallback ? fallback.documentFinal : [],
+            estDonneeSecours: !!fallback,
+            dateOriginale: fallback ? fallback.dateOriginale : null,
+          });
           continue;
         }
 
         const saved = await enregistrerDocumentFinal(entree.id, phrases);
-        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal: saved.get("documentFinal") });
+        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal: saved.get("documentFinal"), estDonneeSecours: false });
 
       } catch (error) {
         console.error(`Erreur scraping ${evt.banqueCentrale}/${evt.categorie} :`, error);
-        resultats.push({ devise: evt.devise, categorie: evt.categorie, status: "error", message: error.message, documentFinal: [] });
 
         try {
-          const fallback = await recupererDernierEventConnu(evt.devise);
-          const documentFallback = fallback ? fallback.get("documentFinal") : [];
+          const fallback = await recupererDernierEventConnu(evt.devise, evt.categorie);
+          const documentFallback = fallback ? fallback.documentFinal : [];
           await enregistrerDocumentFinal(entree.id, documentFallback);
+          resultats.push({
+            devise: evt.devise,
+            categorie: evt.categorie,
+            status: "error",
+            message: error.message,
+            documentFinal: documentFallback,
+            estDonneeSecours: !!fallback,
+            dateOriginale: fallback ? fallback.dateOriginale : null,
+          });
         } catch (errFermeture) {
           console.error(`Erreur fermeture entrée ${evt.banqueCentrale}/${evt.categorie} après échec :`, errFermeture.message);
+          resultats.push({ devise: evt.devise, categorie: evt.categorie, status: "error", message: error.message, documentFinal: [] });
         }
       }
     }
