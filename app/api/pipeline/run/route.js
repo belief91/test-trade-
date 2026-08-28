@@ -7,16 +7,11 @@
 // FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est fermée
 // proprement au lieu de rester bloquée en "pending" indéfiniment.
 //
-// FIX 3 (28/08) : recupererDernierEventConnu() filtre désormais aussi
-// par catégorie et retourne un objet étiqueté { documentFinal,
-// estDonneeSecours, dateOriginale, evenementOriginal } au lieu de
-// l'objet Parse brut — voir lib/central-bank-pipeline-service.js pour
-// le détail du bug (donnée périmée affichée sans étiquette). Répercuté
-// ici : resultats et le JSON écrit sur R2 portent maintenant
-// explicitement estDonneeSecours + dateOriginale quand c'est le cas,
-// pour que le dashboard et la synthèse IA puissent distinguer "vraie
-// publication du jour" de "dernière donnée connue, potentiellement
-// ancienne".
+// FIX 4 (28/08) : retrait complet du fallback recupererDernierEventConnu.
+// Ne correspond pas à l'architecture voulue : événement du jour trouvé
+// => contenu réel scrapé, sinon "skip" — jamais un ancien document
+// d'une autre date/catégorie affiché à la place. C'est ce fallback qui
+// faisait apparaître des données "venues de nulle part".
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -25,7 +20,6 @@ import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
 import {
   enregistrerReconnaissance,
   enregistrerDocumentFinal,
-  recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
@@ -49,6 +43,16 @@ function detecterEvenementsBancaires(evenementsDuJour) {
   return detectes;
 }
 
+/**
+ * POST /api/pipeline/run
+ *
+ * Architecture stricte, deux issues possibles par événement bancaire
+ * détecté aujourd'hui via le calendrier BC :
+ *   - "ok"   : contenu réel scrapé (statement/minutes/discours/...)
+ *   - "skip" : rien de pertinent trouvé — documentFinal vide, jamais de
+ *              contenu de substitution venant d'un autre jour/événement.
+ *   - "error": échec technique.
+ */
 export async function POST(request) {
   try {
     const evenementsDuJour = await lireEvenementsDuJour();
@@ -73,43 +77,24 @@ export async function POST(request) {
 
         if (phrases.length === 0) {
           await enregistrerDocumentFinal(entree.id, []);
-          const fallback = await recupererDernierEventConnu(evt.devise, evt.categorie);
           resultats.push({
             devise: evt.devise,
             banqueCentrale: evt.banqueCentrale,
             categorie: evt.categorie,
             status: "skip",
             reason: "aucun mot-clé trouvé",
-            documentFinal: fallback ? fallback.documentFinal : [],
-            estDonneeSecours: !!fallback,
-            dateOriginale: fallback ? fallback.dateOriginale : null,
+            documentFinal: [],
           });
           continue;
         }
 
         const saved = await enregistrerDocumentFinal(entree.id, phrases);
-        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal: saved.get("documentFinal"), estDonneeSecours: false });
+        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal: saved.get("documentFinal") });
 
       } catch (error) {
         console.error(`Erreur scraping ${evt.banqueCentrale}/${evt.categorie} :`, error);
-
-        try {
-          const fallback = await recupererDernierEventConnu(evt.devise, evt.categorie);
-          const documentFallback = fallback ? fallback.documentFinal : [];
-          await enregistrerDocumentFinal(entree.id, documentFallback);
-          resultats.push({
-            devise: evt.devise,
-            categorie: evt.categorie,
-            status: "error",
-            message: error.message,
-            documentFinal: documentFallback,
-            estDonneeSecours: !!fallback,
-            dateOriginale: fallback ? fallback.dateOriginale : null,
-          });
-        } catch (errFermeture) {
-          console.error(`Erreur fermeture entrée ${evt.banqueCentrale}/${evt.categorie} après échec :`, errFermeture.message);
-          resultats.push({ devise: evt.devise, categorie: evt.categorie, status: "error", message: error.message, documentFinal: [] });
-        }
+        await enregistrerDocumentFinal(entree.id, []);
+        resultats.push({ devise: evt.devise, categorie: evt.categorie, status: "error", message: error.message, documentFinal: [] });
       }
     }
 
