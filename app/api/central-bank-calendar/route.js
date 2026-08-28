@@ -1,18 +1,18 @@
 // app/api/central-bank-calendar/route.js
 //
 // FIX ARCHITECTURAL : R2 devient la SEULE source de verite pour
-// l'historique du calendrier (via lib/calendrier-archive-r2.js). Back4App
-// CentralBankCalendar garde un role reduit : permettre a
-// reconnaissance-service.js de detecter les evenements bancaires DU JOUR.
-// N'est plus jamais interroge comme entrepot historique croissant.
+// l'historique du calendrier (via lib/calendrier-archive-r2.js).
 //
-// FIX PERF (26/08) : ajout de maxDuration en filet de securite. La cause
-// principale du blocage (lecture R2 repetee dans macro-consolidator-
-// service.js) est corrigee separement, mais cette route reste la plus
-// lourde du projet (scraping + boucle Back4App sequentielle + contexte
-// macro) et n'avait aucune limite explicite — elle heritait donc du
-// defaut du plan Vercel, jamais verifie. 60s aligne avec la limite deja
-// posee sur app/api/geopolitics-news/route.js.
+// FIX PERF (26/08) : maxDuration en filet de securite.
+//
+// FIX VOLUME #2 (27/08) : construireContexteMacroDuJour() retourne
+// desormais { contextePartage, evenements } au lieu d'un tableau plat ou
+// chaque evenement recopiait l'integralite du contexte de ses familles
+// liees. Le fichier R2 calendrier-consolide reflete cette nouvelle forme
+// -- lib/ai-synthesis-service.js (modifie dans le meme commit) sait la
+// lire. Ne JAMAIS deployer ce fichier sans le fix correspondant dans
+// ai-synthesis-service.js -- c'est exactement le type d'incoherence
+// config/code qui a cause l'incident du 26/08 (qwen).
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
@@ -65,7 +65,7 @@ export async function GET() {
 
     const { nouveaux, misAJour } = await upsertVersBack4App(evenements);
 
-    const contexteMacro = await construireContexteMacroDuJour(evenements);
+    const { contextePartage, evenements: evenementsAvecContexte } = await construireContexteMacroDuJour(evenements);
 
     const cleR2 = genererCleDuJour("calendrier-bc");
     await ecrireJSONDansR2(cleR2, {
@@ -77,8 +77,9 @@ export async function GET() {
     const cleR2Consolide = genererCleDuJour("calendrier-consolide");
     await ecrireJSONDansR2(cleR2Consolide, {
       generatedAt: new Date().toISOString(),
-      count: contexteMacro.length,
-      data: contexteMacro,
+      count: evenementsAvecContexte.length,
+      contextePartage,
+      data: evenementsAvecContexte,
     });
 
     const archive = await fusionnerDansArchiveCalendrier(evenements);
@@ -92,7 +93,7 @@ export async function GET() {
       cleR2Consolide,
       archive,
       data: evenements,
-      contexteMacro,
+      contexteMacro: evenementsAvecContexte,
     });
   } catch (error) {
     console.error("Erreur scraping calendrier BC :", error);
