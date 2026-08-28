@@ -2,18 +2,21 @@
 //
 // FIX : renommé la clé de sortie R2 pour éviter la collision avec
 // app/api/cot/analyse/route.js (POST, bouton IA manuel), qui écrit déjà
-// sur raw/{date}/cot-analyse.json. Les deux routes sont indépendantes
-// (sources différentes, l'une avec IA l'autre sans) mais écrivaient au
-// même endroit — l'une écrasait silencieusement l'autre si les deux
-// tournaient le même jour.
+// sur raw/{date}/cot-analyse.json.
 //
-// Route mécanique — AUCUN appel IA ici, uniquement du calcul déterministe
-// (même logique que /api/bond-yields/analysis). Utilise la base
-// historique COT déjà intégrée dans R2 (alimentée chaque vendredi par
-// cot-historique-r2.js).
+// Route mécanique — AUCUN appel IA ici, uniquement du calcul déterministe.
+// Utilise la base historique COT déjà intégrée dans R2.
 //
-// Sortie désormais : raw/{date}/cot-precalcul.json (distinct de
-// cot-analyse.json, réservé à la sortie IA du bouton manuel).
+// Sortie désormais : raw/{date}/cot-precalcul.json.
+//
+// FIX (28/08) : ajout de maxDuration, absent jusqu'ici — contrairement
+// aux autres routes du projet déjà corrigées. fetchHistoriqueCOT() fait
+// un appel réseau vers l'API publique CFTC (gouvernement US, notoirement
+// lente par moments) ; sans maxDuration explicite, la route héritait de
+// la limite par défaut Vercel et pouvait timeout silencieusement un jour
+// où cet appel externe traîne — confirmé : cot-precalcul.json absent de
+// R2 le 27/08, présent le 25 et le 28. Ce n'est pas un bug de logique,
+// juste l'absence du même filet de sécurité déjà posé ailleurs.
 
 import { fetchHistoriqueCOT } from "../../../../lib/cot-historique-r2";
 import { calculerAnalyticsToutesDevises } from "../../../../lib/cot-analytics";
@@ -22,6 +25,7 @@ import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+export const maxDuration = 60;
 
 export async function GET() {
   try {
