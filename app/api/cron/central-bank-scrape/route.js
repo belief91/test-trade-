@@ -4,17 +4,24 @@
 // bug de requête Parse sur champ absent (27-28/08), trace R2 même si
 // rien à traiter (28/08).
 //
-// FIX 5 (28/08) : recupererDernierEventConnu() filtre désormais aussi
-// par catégorie et retourne un objet étiqueté au lieu de l'objet Parse
-// brut — voir lib/central-bank-pipeline-service.js. Répercuté ici :
-// resultats porte maintenant estDonneeSecours + dateOriginale.
+// FIX 6 (28/08) : retrait complet du fallback recupererDernierEventConnu.
+// Ne correspond pas à l'architecture voulue : soit un événement bancaire
+// du jour est trouvé via le calendrier BC et on scrape son contenu réel
+// (statement/minutes/discours/...), soit rien n'est trouvé et c'est un
+// "skip" — jamais un troisième état où on ressort le contenu d'un ANCIEN
+// événement (potentiellement une autre catégorie, une autre date) pour
+// combler le vide. C'est ce fallback qui faisait apparaître des données
+// "venues de nulle part" (ex: contenu d'un vieux discours affiché comme
+// si c'était la publication du jour, alors que l'événement du jour
+// n'avait simplement rien donné). Désormais : phrases.length === 0 =>
+// status "skip", documentFinal vide, point final — pas de contenu de
+// substitution.
 
 import { NextResponse } from "next/server";
 import {
   lireReconnaissancesDuJour,
   enregistrerDocumentFinal,
   enregistrerEchecScraping,
-  recupererDernierEventConnu,
 } from "../../../../lib/central-bank-pipeline-service";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
@@ -57,6 +64,18 @@ async function mettreAJourFichierDevise(devise, entreeDuJour) {
   return cleDevise;
 }
 
+/**
+ * GET /api/cron/central-bank-scrape
+ *
+ * Architecture stricte, deux issues possibles par entrée traitée :
+ *   - "ok"   : événement bancaire du jour trouvé + contenu réel scrapé
+ *              (statement/minutes/discours/... selon la catégorie)
+ *   - "skip" : rien de pertinent trouvé (aucun mot-clé dans le texte
+ *              scrapé) — documentFinal reste vide, jamais de contenu
+ *              de substitution venant d'un autre jour/événement.
+ *   - "error": échec technique du scraping (retenté aux prochains crons
+ *              tant que tentatives < 3, voir central-bank-pipeline-service.js)
+ */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
@@ -95,17 +114,13 @@ export async function GET(request) {
 
       if (phrases.length === 0) {
         await enregistrerDocumentFinal(entree.id, []);
-        const fallback = await recupererDernierEventConnu(devise, categorie);
-        const documentFinal = fallback ? fallback.documentFinal : [];
         resultats.push({
           devise,
           banqueCentrale,
           categorie,
           status: "skip",
           reason: "aucun mot-clé trouvé",
-          documentFinal,
-          estDonneeSecours: !!fallback,
-          dateOriginale: fallback ? fallback.dateOriginale : null,
+          documentFinal: [],
         });
 
         if (devise) {
@@ -114,9 +129,7 @@ export async function GET(request) {
             banqueCentrale,
             categorie,
             status: "skip",
-            documentFinal,
-            estDonneeSecours: !!fallback,
-            dateOriginale: fallback ? fallback.dateOriginale : null,
+            documentFinal: [],
           });
         }
         continue;
@@ -124,7 +137,7 @@ export async function GET(request) {
 
       const saved = await enregistrerDocumentFinal(entree.id, phrases);
       const documentFinal = saved.get("documentFinal");
-      resultats.push({ devise, banqueCentrale, categorie, status: "ok", documentFinal, estDonneeSecours: false });
+      resultats.push({ devise, banqueCentrale, categorie, status: "ok", documentFinal });
 
       if (devise) {
         await mettreAJourFichierDevise(devise, {
@@ -133,7 +146,6 @@ export async function GET(request) {
           categorie,
           status: "ok",
           documentFinal,
-          estDonneeSecours: false,
         });
       }
 
