@@ -5,11 +5,10 @@ import { uploaderVersR2 } from "../../../../lib/r2-upload-service.js";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+export const maxDuration = 60;
 
 /**
  * Retourne la date du jour en GMT+3 (Madagascar), format YYYY-MM-DD.
- * Même logique que les autres modules de ton pipeline (geopolitique,
- * calendrier BC) pour que la clé R2 soit cohérente dans la fusion.
  */
 function getDateGMT3() {
   const now = new Date();
@@ -19,8 +18,6 @@ function getDateGMT3() {
 
 /**
  * Lit les données actuelles de BondYieldMaturity depuis Back4App.
- * Transforme les objets Parse en tableau plat compatible avec
- * analyserCourbesDeTaux() (mêmes champs que la sortie de scraperMaturitesG10).
  */
 async function lireBondYieldsBack4App() {
   const BondYieldMaturity = Parse.Object.extend("BondYieldMaturity");
@@ -44,14 +41,20 @@ async function lireBondYieldsBack4App() {
 /**
  * GET /api/bond-yields/analysis
  *
- * Appelée à la demande (manuellement ou juste avant l'appel IA
- * de synthèse journalière) — PAS par le cron automatique.
+ * Appelée par le cron automatique (20h15 GMT+3, voir cron-beliefx.yml,
+ * job bond-yields-analysis) — le commentaire précédent affirmant "pas
+ * par le cron automatique" était obsolète, corrigé au passage (28/08).
  *
  * Flux :
  *   1. Lit BondYieldMaturity depuis Back4App (données déjà scrapées)
  *   2. Calcule spreads / forme de courbe / cohérence FX
  *   3. Upload le JSON vers R2 : raw/{date}/bond-yield-analysis.json
  *   4. Retourne le résultat pour confirmation immédiate
+ *
+ * FIX (28/08) : ajout de maxDuration, absent jusqu'ici — même classe de
+ * bug que cot/analysis (voir ce fichier, corrigé le même jour). Confirmé
+ * sur R2 : bond-yield-analysis.json absent le 27/08, présent le 25 et
+ * le 28 — échec intermittent typique d'un timeout par défaut trop court.
  */
 export async function GET() {
   try {
