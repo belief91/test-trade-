@@ -6,20 +6,14 @@
 // chemin cassé /scrape/central-bank-statement.
 // FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est fermée
 // proprement au lieu de rester bloquée en "pending" indéfiniment.
-//
 // FIX 4 (28/08) : retrait complet du fallback recupererDernierEventConnu.
-// Architecture stricte : événement du jour trouvé => contenu réel
-// scrapé, sinon "skip" — jamais un ancien document d'une autre date.
+// FIX 5 (29/08) : écrit désormais aussi le fichier par devise (comme
+// central-bank-scrape/route.js).
 //
-// FIX 5 (29/08) : cette route n'écrivait JAMAIS banques-centrales/
-// {devise}.json — seul central-bank-scrape/route.js (le cron) le
-// faisait. Confirmé sur export Back4App : Pipeline correctement mis à
-// jour via le bouton "Recharger" (contenu réel, daté du jour, validé),
-// mais aucune trace correspondante sur R2 dans banques-centrales/ tant
-// que seul ce bouton avait tourné — le cron du soir seul écrivait ce
-// fichier. Ajouté ici pour que les deux chemins (bouton manuel et cron)
-// produisent exactement la même sortie R2, comme dans
-// central-bank-scrape/route.js.
+// FIX 8 (29/08) : chemin R2 renommé de banques-centrales/{devise}.json
+// vers database/banque-centrale/{devise}.json, cohérent avec
+// database/calendrier-bc/. Voir central-bank-scrape/route.js, modifié
+// dans le même commit.
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -57,7 +51,7 @@ function detecterEvenementsBancaires(evenementsDuJour) {
  * routes produisent le même format de sortie sur R2.
  */
 async function mettreAJourFichierDevise(devise, entreeDuJour) {
-  const cleDevise = `banques-centrales/${devise}.json`;
+  const cleDevise = `database/banque-centrale/${devise}.json`;
 
   let historique = [];
   try {

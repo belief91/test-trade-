@@ -2,20 +2,15 @@
 //
 // Historique des fix : chemin Render cassé (26/08), entrées orphelines +
 // bug de requête Parse sur champ absent (27-28/08), trace R2 même si
-// rien à traiter (28/08).
+// rien à traiter (28/08), retrait du fallback recupererDernierEventConnu
+// (28/08).
 //
-// FIX 6 (28/08) : retrait complet du fallback recupererDernierEventConnu.
-// Ne correspond pas à l'architecture voulue : soit un événement bancaire
-// du jour est trouvé via le calendrier BC et on scrape son contenu réel
-// (statement/minutes/discours/...), soit rien n'est trouvé et c'est un
-// "skip" — jamais un troisième état où on ressort le contenu d'un ANCIEN
-// événement (potentiellement une autre catégorie, une autre date) pour
-// combler le vide. C'est ce fallback qui faisait apparaître des données
-// "venues de nulle part" (ex: contenu d'un vieux discours affiché comme
-// si c'était la publication du jour, alors que l'événement du jour
-// n'avait simplement rien donné). Désormais : phrases.length === 0 =>
-// status "skip", documentFinal vide, point final — pas de contenu de
-// substitution.
+// FIX 7 (29/08) : chemin R2 renommé de banques-centrales/{devise}.json
+// vers database/banque-centrale/{devise}.json, pour suivre la même
+// convention que database/calendrier-bc/ (archive permanente, accumulée
+// jour après jour) — par opposition à raw/{date}/ (rapport du jour,
+// remplaçable). Contenu et logique d'accumulation inchangés, seul le
+// chemin change.
 
 import { NextResponse } from "next/server";
 import {
@@ -35,7 +30,7 @@ import {
 export const maxDuration = 60;
 
 async function mettreAJourFichierDevise(devise, entreeDuJour) {
-  const cleDevise = `banques-centrales/${devise}.json`;
+  const cleDevise = `database/banque-centrale/${devise}.json`;
 
   let historique = [];
   try {
