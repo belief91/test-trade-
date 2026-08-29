@@ -3,17 +3,23 @@
 // Historique des fix : chemin Render cassé (26/08), entrées orphelines +
 // bug de requête Parse sur champ absent (27-28/08), trace R2 même si
 // rien à traiter (28/08), retrait du fallback recupererDernierEventConnu
-// (28/08), chemin renommé vers database/banque-centrale/ (29/08).
+// (28/08), chemin renommé vers database/banque-centrale/ (29/08),
+// mettreAJourFichierDevise partagée (29/08).
 //
-// FIX 9 (29/08) : mettreAJourFichierDevise() déplacée dans
-// lib/central-bank-archive-r2.js, partagée avec pipeline/run/route.js
-// et la nouvelle route de migration — fin de la duplication.
+// FIX 10 (29/08) : la branche "skip" testait phrases.length === 0, mais
+// enregistrerDocumentFinal() exige désormais contenuEstSuffisant() (au
+// moins SEUIL_MIN_PHRASES = 3) pour marquer "done". Avec l'ancien test,
+// un résultat de 1 ou 2 phrases prenait la branche "ok" ici (donc
+// écrivait dans R2 avec status:"ok") alors que Back4App l'aurait marqué
+// "skipped" en interne — incohérence entre les deux systèmes. Les deux
+// utilisent maintenant exactement le même seuil.
 
 import { NextResponse } from "next/server";
 import {
   lireReconnaissancesDuJour,
   enregistrerDocumentFinal,
   enregistrerEchecScraping,
+  contenuEstSuffisant,
 } from "../../../../lib/central-bank-pipeline-service";
 import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
@@ -31,8 +37,11 @@ export const maxDuration = 60;
  *
  * Architecture stricte, deux issues possibles par entrée traitée :
  *   - "ok"   : événement bancaire du jour trouvé + contenu réel scrapé
- *   - "skip" : rien de pertinent trouvé — documentFinal vide, jamais de
- *              contenu de substitution venant d'un autre jour/événement.
+ *              ET suffisant (contenuEstSuffisant)
+ *   - "skip" : rien de pertinent trouvé, OU contenu trouvé mais
+ *              insuffisant (ex: mention légale seule) — documentFinal
+ *              vide dans les deux cas, jamais de contenu de
+ *              substitution venant d'un autre jour/événement.
  *   - "error": échec technique du scraping (retenté aux prochains crons
  *              tant que tentatives < 3)
  */
@@ -72,14 +81,14 @@ export async function GET(request) {
 
       const phrases = filtrerParagraphes(texte, banqueCentrale);
 
-      if (phrases.length === 0) {
-        await enregistrerDocumentFinal(entree.id, []);
+      if (!contenuEstSuffisant(phrases)) {
+        await enregistrerDocumentFinal(entree.id, phrases);
         resultats.push({
           devise,
           banqueCentrale,
           categorie,
           status: "skip",
-          reason: "aucun mot-clé trouvé",
+          reason: phrases.length === 0 ? "aucun mot-clé trouvé" : `contenu insuffisant (${phrases.length} phrase(s), seuil minimum non atteint)`,
           documentFinal: [],
         });
 

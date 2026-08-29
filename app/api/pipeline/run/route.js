@@ -5,11 +5,12 @@
 // Historique : chemin Render cassé corrigé, fermeture propre des entrées
 // en erreur, retrait du fallback recupererDernierEventConnu (28/08),
 // écriture par devise ajoutée puis chemin renommé vers
-// database/banque-centrale/ (29/08).
+// database/banque-centrale/ (29/08), mettreAJourFichierDevise partagée.
 //
-// FIX 9 (29/08) : mettreAJourFichierDevise() déplacée dans
-// lib/central-bank-archive-r2.js, partagée avec central-bank-scrape/
-// route.js — fin de la duplication.
+// FIX 10 (29/08) : même correction que central-bank-scrape/route.js —
+// utilise contenuEstSuffisant() au lieu de phrases.length === 0, pour
+// rester cohérent avec ce qu'enregistrerDocumentFinal() décide en
+// interne (voir lib/central-bank-pipeline-service.js).
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -18,6 +19,7 @@ import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
 import {
   enregistrerReconnaissance,
   enregistrerDocumentFinal,
+  contenuEstSuffisant,
 } from "../../../../lib/central-bank-pipeline-service";
 import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
@@ -47,8 +49,10 @@ function detecterEvenementsBancaires(evenementsDuJour) {
  *
  * Architecture stricte, deux issues possibles par événement bancaire
  * détecté aujourd'hui via le calendrier BC :
- *   - "ok"   : contenu réel scrapé (statement/minutes/discours/...)
- *   - "skip" : rien de pertinent trouvé — documentFinal vide.
+ *   - "ok"   : contenu réel scrapé (statement/minutes/discours/...) ET
+ *              suffisant (contenuEstSuffisant)
+ *   - "skip" : rien de pertinent trouvé, ou contenu insuffisant —
+ *              documentFinal vide dans les deux cas.
  *   - "error": échec technique.
  */
 export async function POST(request) {
@@ -74,14 +78,14 @@ export async function POST(request) {
         const texte = await scraperBanqueCentraleViaRender(evt.banqueCentrale, evt.categorie);
         const phrases = filtrerParagraphes(texte, evt.banqueCentrale);
 
-        if (phrases.length === 0) {
-          await enregistrerDocumentFinal(entree.id, []);
+        if (!contenuEstSuffisant(phrases)) {
+          await enregistrerDocumentFinal(entree.id, phrases);
           resultats.push({
             devise: evt.devise,
             banqueCentrale: evt.banqueCentrale,
             categorie: evt.categorie,
             status: "skip",
-            reason: "aucun mot-clé trouvé",
+            reason: phrases.length === 0 ? "aucun mot-clé trouvé" : `contenu insuffisant (${phrases.length} phrase(s), seuil minimum non atteint)`,
             documentFinal: [],
           });
 
