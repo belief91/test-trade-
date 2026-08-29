@@ -8,10 +8,18 @@
 // proprement au lieu de rester bloquée en "pending" indéfiniment.
 //
 // FIX 4 (28/08) : retrait complet du fallback recupererDernierEventConnu.
-// Ne correspond pas à l'architecture voulue : événement du jour trouvé
-// => contenu réel scrapé, sinon "skip" — jamais un ancien document
-// d'une autre date/catégorie affiché à la place. C'est ce fallback qui
-// faisait apparaître des données "venues de nulle part".
+// Architecture stricte : événement du jour trouvé => contenu réel
+// scrapé, sinon "skip" — jamais un ancien document d'une autre date.
+//
+// FIX 5 (29/08) : cette route n'écrivait JAMAIS banques-centrales/
+// {devise}.json — seul central-bank-scrape/route.js (le cron) le
+// faisait. Confirmé sur export Back4App : Pipeline correctement mis à
+// jour via le bouton "Recharger" (contenu réel, daté du jour, validé),
+// mais aucune trace correspondante sur R2 dans banques-centrales/ tant
+// que seul ce bouton avait tourné — le cron du soir seul écrivait ce
+// fichier. Ajouté ici pour que les deux chemins (bouton manuel et cron)
+// produisent exactement la même sortie R2, comme dans
+// central-bank-scrape/route.js.
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -22,7 +30,7 @@ import {
   enregistrerDocumentFinal,
 } from "../../../../lib/central-bank-pipeline-service";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
-import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
+import { ecrireJSONDansR2, lireJSONDepuisR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
 
@@ -41,6 +49,41 @@ function detecterEvenementsBancaires(evenementsDuJour) {
     detectes.push({ devise: e.devise, banqueCentrale, categorie, evenementNom: e.evenement, heureEvenement: e.heure });
   }
   return detectes;
+}
+
+/**
+ * Identique à central-bank-scrape/route.js — dupliqué volontairement
+ * (petit fichier, pas de dépendance circulaire) pour que les deux
+ * routes produisent le même format de sortie sur R2.
+ */
+async function mettreAJourFichierDevise(devise, entreeDuJour) {
+  const cleDevise = `banques-centrales/${devise}.json`;
+
+  let historique = [];
+  try {
+    const existant = await lireJSONDepuisR2(cleDevise);
+    historique = existant.historique || [];
+  } catch {
+    historique = [];
+  }
+
+  const dateDuJour = entreeDuJour.date;
+  const categorieDuJour = entreeDuJour.categorie;
+
+  const historiqueFiltre = historique.filter(
+    (h) => !(h.date === dateDuJour && h.categorie === categorieDuJour)
+  );
+  historiqueFiltre.push(entreeDuJour);
+  historiqueFiltre.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  await ecrireJSONDansR2(cleDevise, {
+    devise,
+    updatedAt: new Date().toISOString(),
+    count: historiqueFiltre.length,
+    historique: historiqueFiltre,
+  });
+
+  return cleDevise;
 }
 
 /**
@@ -64,6 +107,7 @@ export async function POST(request) {
     }
 
     const resultats = [];
+    const dateISOJour = new Date().toISOString().split("T")[0];
 
     for (const evt of evenementsBancaires) {
       const entree = await enregistrerReconnaissance({
@@ -85,11 +129,28 @@ export async function POST(request) {
             reason: "aucun mot-clé trouvé",
             documentFinal: [],
           });
+
+          await mettreAJourFichierDevise(evt.devise, {
+            date: dateISOJour,
+            banqueCentrale: evt.banqueCentrale,
+            categorie: evt.categorie,
+            status: "skip",
+            documentFinal: [],
+          });
           continue;
         }
 
         const saved = await enregistrerDocumentFinal(entree.id, phrases);
-        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal: saved.get("documentFinal") });
+        const documentFinal = saved.get("documentFinal");
+        resultats.push({ devise: evt.devise, banqueCentrale: evt.banqueCentrale, categorie: evt.categorie, status: "ok", documentFinal });
+
+        await mettreAJourFichierDevise(evt.devise, {
+          date: dateISOJour,
+          banqueCentrale: evt.banqueCentrale,
+          categorie: evt.categorie,
+          status: "ok",
+          documentFinal,
+        });
 
       } catch (error) {
         console.error(`Erreur scraping ${evt.banqueCentrale}/${evt.categorie} :`, error);
