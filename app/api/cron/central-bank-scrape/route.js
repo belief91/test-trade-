@@ -3,14 +3,11 @@
 // Historique des fix : chemin Render cassé (26/08), entrées orphelines +
 // bug de requête Parse sur champ absent (27-28/08), trace R2 même si
 // rien à traiter (28/08), retrait du fallback recupererDernierEventConnu
-// (28/08).
+// (28/08), chemin renommé vers database/banque-centrale/ (29/08).
 //
-// FIX 7 (29/08) : chemin R2 renommé de banques-centrales/{devise}.json
-// vers database/banque-centrale/{devise}.json, pour suivre la même
-// convention que database/calendrier-bc/ (archive permanente, accumulée
-// jour après jour) — par opposition à raw/{date}/ (rapport du jour,
-// remplaçable). Contenu et logique d'accumulation inchangés, seul le
-// chemin change.
+// FIX 9 (29/08) : mettreAJourFichierDevise() déplacée dans
+// lib/central-bank-archive-r2.js, partagée avec pipeline/run/route.js
+// et la nouvelle route de migration — fin de la duplication.
 
 import { NextResponse } from "next/server";
 import {
@@ -18,58 +15,26 @@ import {
   enregistrerDocumentFinal,
   enregistrerEchecScraping,
 } from "../../../../lib/central-bank-pipeline-service";
+import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
 import {
   ecrireJSONDansR2,
-  lireJSONDepuisR2,
   genererCleDuJour,
   genererCleArchiveDuJour,
 } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
 
-async function mettreAJourFichierDevise(devise, entreeDuJour) {
-  const cleDevise = `database/banque-centrale/${devise}.json`;
-
-  let historique = [];
-  try {
-    const existant = await lireJSONDepuisR2(cleDevise);
-    historique = existant.historique || [];
-  } catch {
-    historique = [];
-  }
-
-  const dateDuJour = entreeDuJour.date;
-  const categorieDuJour = entreeDuJour.categorie;
-
-  const historiqueFiltre = historique.filter(
-    (h) => !(h.date === dateDuJour && h.categorie === categorieDuJour)
-  );
-  historiqueFiltre.push(entreeDuJour);
-  historiqueFiltre.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  await ecrireJSONDansR2(cleDevise, {
-    devise,
-    updatedAt: new Date().toISOString(),
-    count: historiqueFiltre.length,
-    historique: historiqueFiltre,
-  });
-
-  return cleDevise;
-}
-
 /**
  * GET /api/cron/central-bank-scrape
  *
  * Architecture stricte, deux issues possibles par entrée traitée :
  *   - "ok"   : événement bancaire du jour trouvé + contenu réel scrapé
- *              (statement/minutes/discours/... selon la catégorie)
- *   - "skip" : rien de pertinent trouvé (aucun mot-clé dans le texte
- *              scrapé) — documentFinal reste vide, jamais de contenu
- *              de substitution venant d'un autre jour/événement.
+ *   - "skip" : rien de pertinent trouvé — documentFinal vide, jamais de
+ *              contenu de substitution venant d'un autre jour/événement.
  *   - "error": échec technique du scraping (retenté aux prochains crons
- *              tant que tentatives < 3, voir central-bank-pipeline-service.js)
+ *              tant que tentatives < 3)
  */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";

@@ -2,18 +2,14 @@
 // Déclenché par le bouton du dashboard — exécute tout le pipeline en une
 // fois pour TOUS les événements bancaires du jour, sans attendre les crons.
 //
-// FIX 1 : utilise scraperBanqueCentraleViaRender() au lieu de l'ancien
-// chemin cassé /scrape/central-bank-statement.
-// FIX 2 : en cas d'erreur, l'entrée CentralBankPipeline est fermée
-// proprement au lieu de rester bloquée en "pending" indéfiniment.
-// FIX 4 (28/08) : retrait complet du fallback recupererDernierEventConnu.
-// FIX 5 (29/08) : écrit désormais aussi le fichier par devise (comme
-// central-bank-scrape/route.js).
+// Historique : chemin Render cassé corrigé, fermeture propre des entrées
+// en erreur, retrait du fallback recupererDernierEventConnu (28/08),
+// écriture par devise ajoutée puis chemin renommé vers
+// database/banque-centrale/ (29/08).
 //
-// FIX 8 (29/08) : chemin R2 renommé de banques-centrales/{devise}.json
-// vers database/banque-centrale/{devise}.json, cohérent avec
-// database/calendrier-bc/. Voir central-bank-scrape/route.js, modifié
-// dans le même commit.
+// FIX 9 (29/08) : mettreAJourFichierDevise() déplacée dans
+// lib/central-bank-archive-r2.js, partagée avec central-bank-scrape/
+// route.js — fin de la duplication.
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -23,8 +19,9 @@ import {
   enregistrerReconnaissance,
   enregistrerDocumentFinal,
 } from "../../../../lib/central-bank-pipeline-service";
+import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
-import { ecrireJSONDansR2, lireJSONDepuisR2, genererCleDuJour } from "../../../../lib/r2-client";
+import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
 
@@ -46,48 +43,12 @@ function detecterEvenementsBancaires(evenementsDuJour) {
 }
 
 /**
- * Identique à central-bank-scrape/route.js — dupliqué volontairement
- * (petit fichier, pas de dépendance circulaire) pour que les deux
- * routes produisent le même format de sortie sur R2.
- */
-async function mettreAJourFichierDevise(devise, entreeDuJour) {
-  const cleDevise = `database/banque-centrale/${devise}.json`;
-
-  let historique = [];
-  try {
-    const existant = await lireJSONDepuisR2(cleDevise);
-    historique = existant.historique || [];
-  } catch {
-    historique = [];
-  }
-
-  const dateDuJour = entreeDuJour.date;
-  const categorieDuJour = entreeDuJour.categorie;
-
-  const historiqueFiltre = historique.filter(
-    (h) => !(h.date === dateDuJour && h.categorie === categorieDuJour)
-  );
-  historiqueFiltre.push(entreeDuJour);
-  historiqueFiltre.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  await ecrireJSONDansR2(cleDevise, {
-    devise,
-    updatedAt: new Date().toISOString(),
-    count: historiqueFiltre.length,
-    historique: historiqueFiltre,
-  });
-
-  return cleDevise;
-}
-
-/**
  * POST /api/pipeline/run
  *
  * Architecture stricte, deux issues possibles par événement bancaire
  * détecté aujourd'hui via le calendrier BC :
  *   - "ok"   : contenu réel scrapé (statement/minutes/discours/...)
- *   - "skip" : rien de pertinent trouvé — documentFinal vide, jamais de
- *              contenu de substitution venant d'un autre jour/événement.
+ *   - "skip" : rien de pertinent trouvé — documentFinal vide.
  *   - "error": échec technique.
  */
 export async function POST(request) {
