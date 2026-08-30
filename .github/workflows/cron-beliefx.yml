@@ -8,6 +8,9 @@ name: Cron BELIEFX
 
 on:
   schedule:
+  # TEST ISOLÉ (29/08) — central-bank-fed, 4x/jour, 6h GMT+3 d'écart :
+    # 03h00, 09h00, 15h00, 21h00 GMT+3.
+    - cron: "0 0,6,12,18 * * *"
     # Reconnaissance BC (matin) : 03h00 UTC = 06h00 GMT+3
     - cron: "0 3 * * *"
     # Scraping générique : 19h00 UTC = 22h00 GMT+3
@@ -108,10 +111,19 @@ jobs:
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/synthese-hebdo \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
-
+            
   geopolitics-tv5monde:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 2,6,10,14,18,22 * * *'
     steps:
       - name: Scraper + filtrer actu géopolitique (toutes les 4h, ancré 5h15 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/geopolitics-news
+
+        test-central-bank-fed:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 0,6,12,18 * * *'
+    steps:
+      - name: TEST isolé — scraping Fed sans calendrier BC (4x/jour, 03h/09h/15h/21h GMT+3)
+        run: |
+          curl -sf https://test-trade-eosin.vercel.app/api/test/central-bank-fed \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
