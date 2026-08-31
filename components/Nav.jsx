@@ -35,9 +35,9 @@ export default function Nav() {
         {LINKS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
-            <Link key={href} href={href} className="nav-cage" style={{ background: active ? "#F0A500" : "rgba(240,165,0,0.14)" }}>
-              <Icon size={13} strokeWidth={2.5} style={{ color: active ? "#0A0C10" : "var(--accent)" }} />
-              <span style={{ color: active ? "#0A0C10" : "var(--accent)" }}>{label}</span>
+            <Link key={href} href={href} className="nav-cage" style={{ background: active ? "var(--accent-blue-light)" : "var(--accent-blue-light-dim)" }}>
+              <Icon size={13} strokeWidth={2.5} style={{ color: active ? "#0A0C10" : "var(--accent-blue-light)" }} />
+              <span style={{ color: active ? "#0A0C10" : "var(--accent-blue-light)" }}>{label}</span>
             </Link>
           );
         })}
