@@ -119,7 +119,7 @@ jobs:
       - name: Scraper + filtrer actu géopolitique (toutes les 4h, ancré 5h15 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/geopolitics-news
 
-        test-central-bank-fed:
+  test-central-bank-fed:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 0,6,12,18 * * *'
     steps:
