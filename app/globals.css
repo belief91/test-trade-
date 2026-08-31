@@ -22,6 +22,14 @@
   --loss-dim:  #DC2626;
   --blue:      #3B82F6;
   --navy:      #0A0C10;
+
+  /* Bleu clair : ligne de navigation (Dashboard -> Synthèse IA) */
+  --accent-blue-light:      #38BDF8;
+  --accent-blue-light-dim:  rgba(56,165,248,0.14);
+  /* Bleu nuit : boutons "Recharger" / "Chargement..." / "IA Synthèse" */
+  --accent-blue-dark:       #0F2A5C;
+  --accent-blue-dark-dim:   rgba(15,42,92,0.35);
+
   --shadow-card: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.55);
   --shadow-card-hover: 0 1px 2px rgba(0,0,0,0.5), 0 12px 32px -8px rgba(240,165,0,0.18);
 
@@ -52,6 +60,12 @@
   --win:       #16A34A;
   --loss:      #DC2626;
   --navy:      #0A0C10;
+
+  --accent-blue-light:      #0284C7;
+  --accent-blue-light-dim:  rgba(2,132,199,0.12);
+  --accent-blue-dark:       #0F2A5C;
+  --accent-blue-dark-dim:   rgba(15,42,92,0.25);
+
   --shadow-card: 0 1px 2px rgba(15,17,23,0.04), 0 8px 20px -6px rgba(15,17,23,0.10);
   --shadow-card-hover: 0 1px 2px rgba(15,17,23,0.06), 0 12px 28px -6px rgba(217,119,6,0.16);
 
@@ -318,9 +332,10 @@ h1,h2,h3,h4 { font-family: "Space Grotesk", sans-serif; font-weight: 600; }
 }
 
 /* ─── CAGES DE NAVIGATION "4D" ───
-   Boîtes oranges cliquables, majuscules, gras, avec un relief net (ombre +
+   Boîtes bleu clair cliquables, majuscules, gras, avec un relief net (ombre +
    reflet) qui réagit physiquement au survol (soulèvement) et au clic
-   (enfoncement) — d'où l'effet de profondeur "4D" (3D + réaction au temps). */
+   (enfoncement) — d'où l'effet de profondeur "4D" (3D + réaction au temps).
+   Couvre toute la ligne de nav, de "Dashboard" jusqu'à "Synthèse IA". */
 .nav-cage {
   display: inline-flex;
   align-items: center;
@@ -335,10 +350,10 @@ h1,h2,h3,h4 { font-family: "Space Grotesk", sans-serif; font-weight: 600; }
   white-space: nowrap;
   flex-shrink: 0;
   cursor: pointer;
-  border: 1px solid rgba(240,165,0,0.35);
+  border: 1px solid rgba(56,189,248,0.35);
   box-shadow:
-    0 2px 0 rgba(240,165,0,0.45),
-    0 4px 10px -2px rgba(240,165,0,0.25),
+    0 2px 0 rgba(56,189,248,0.45),
+    0 4px 10px -2px rgba(56,189,248,0.25),
     inset 0 1px 0 rgba(255,255,255,0.25);
   transform: translateY(0);
   transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
@@ -347,14 +362,14 @@ h1,h2,h3,h4 { font-family: "Space Grotesk", sans-serif; font-weight: 600; }
   transform: translateY(-2px);
   filter: brightness(1.08);
   box-shadow:
-    0 4px 0 rgba(240,165,0,0.45),
-    0 8px 16px -4px rgba(240,165,0,0.35),
+    0 4px 0 rgba(56,189,248,0.45),
+    0 8px 16px -4px rgba(56,189,248,0.35),
     inset 0 1px 0 rgba(255,255,255,0.3);
 }
 .nav-cage:active {
   transform: translateY(1px);
   box-shadow:
-    0 1px 0 rgba(240,165,0,0.45),
-    0 2px 6px -2px rgba(240,165,0,0.3),
+    0 1px 0 rgba(56,189,248,0.45),
+    0 2px 6px -2px rgba(56,189,248,0.3),
     inset 0 1px 0 rgba(255,255,255,0.2);
 }
