@@ -9,24 +9,27 @@ import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
+// FIX (01/09) : cette route n'avait aucun maxDuration, contrairement à
+// bond-yields/analysis et cot/analysis déjà corrigés le 28/08 pour le
+// même type de bug. Confirmé sur R2 : bond-yield-analysis.json et
+// cot-precalcul.json manquent presque systématiquement le lundi.
+// Hypothèse retenue (pas 100% prouvée, mais cohérente avec les deux
+// observations) : GitHub Actions a des délais de file d'attente connus
+// et documentés plus importants le lundi (pic de charge globale sur les
+// runners partagés) — un déclenchement retardé de CE scraper (17h00
+// UTC) combiné à l'absence de maxDuration augmente la probabilité de
+// dépasser la limite par défaut de Vercel Hobby ce jour-là précisément.
+// bond-yields/analysis (17h15 UTC) dépend des données Back4App écrites
+// ICI — si ce scraper échoue silencieusement le lundi, l'analyse qui
+// suit 15 minutes plus tard n'a rien de neuf à analyser non plus.
+export const maxDuration = 60;
+
 /**
  * Sauvegarde les yields dans Back4App, classe "BondYieldMaturity".
- * Utilise saveAll pour les enregistrer en une seule opération batch,
- * même pattern que sauvegarderVersBack4App() dans route.js calendar.
- *
- * ⚠️ Contrairement au calendar (toujours de nouveaux événements),
- * ici on veut un "snapshot" : un seul document par (currency, maturity),
- * mis à jour à chaque scraping plutôt que dupliqué. saveAll ne fait pas
- * d'upsert automatique, donc on cherche d'abord les objets existants.
- *
- * ⚠️ Suppose une classe Parse "BondYieldMaturity" (créée automatiquement
- * par Parse au premier save si le schéma Back4App n'est pas verrouillé).
  */
 async function sauvegarderVersBack4App(yields) {
   const BondYieldMaturity = Parse.Object.extend("BondYieldMaturity");
 
-  // Récupère les objets existants pour les 8 devises en une seule requête,
-  // plutôt qu'une query par ligne (24 requêtes) — reste efficace.
   const query = new Parse.Query(BondYieldMaturity);
   query.containedIn(
     "currency",
@@ -34,7 +37,6 @@ async function sauvegarderVersBack4App(yields) {
   );
   query.limit(1000);
   const existants = await query.find({ useMasterKey: true });
-
 
   const trouverExistant = (currency, maturity) =>
     existants.find((o) => o.get("currency") === currency && o.get("maturity") === maturity);
@@ -67,11 +69,8 @@ export async function GET() {
   try {
     const yields = await scraperMaturitesG10();
 
-    // 1. Sauvegarde Back4App (snapshot upsert par currency+maturity)
     await sauvegarderVersBack4App(yields);
 
-    // 2. Upload R2 — même convention que les autres modules du pipeline
-    // Clé : raw/{date}/bond-yields.json (date en GMT+3, Madagascar)
     const cleR2 = genererCleDuJour("bond-yields");
     await ecrireJSONDansR2(cleR2, {
       scrapedAt: new Date().toISOString(),
