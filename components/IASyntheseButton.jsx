@@ -59,8 +59,8 @@ export default function IASyntheseButton({ moduleLabel, endpoint, method = "POST
           padding: "6px 12px",
           borderRadius: 6,
           border: "1px solid var(--border)",
-          background: loading ? "rgba(240,165,0,0.14)" : "#F0A500",
-          color: loading ? "var(--accent)" : "#0A0C10",
+          background: loading ? "var(--accent-blue-dark-dim)" : "var(--accent-blue-dark)",
+          color: loading ? "var(--accent-blue-dark)" : "#fff",
           fontSize: 13,
           fontWeight: 700,
           cursor: loading ? "default" : "pointer",
@@ -91,7 +91,7 @@ export default function IASyntheseButton({ moduleLabel, endpoint, method = "POST
               display: "flex", justifyContent: "space-between", alignItems: "center",
               padding: "12px 16px", borderBottom: "1px solid var(--border)",
             }}>
-              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--accent)" }}>
+              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--accent-blue-dark)" }}>
                 IA Synthèse — {moduleLabel} {elapsedMs !== null && !loading && `(${elapsedMs} ms)`}
               </span>
               <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--sub)" }}>
