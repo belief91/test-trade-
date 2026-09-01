@@ -56,7 +56,7 @@ export default function CentralBankCalendarTable() {
           disabled={chargement}
           style={{
             padding: "0.5rem 1rem",
-            backgroundColor: chargement ? "#999" : "#1a73e8",
+            backgroundColor: chargement ? "#4A5568" : "#0F2A5C",
             color: "white",
             border: "none",
             borderRadius: "6px",
