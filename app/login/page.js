@@ -45,7 +45,7 @@ export default function LoginPage() {
       <div className="hero-band__grid" />
 
       <div className="hero-band__content" style={{ width: "100%", maxWidth: 380 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#F0A500", marginBottom: 8, textAlign: "center" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent-blue-light)", marginBottom: 8, textAlign: "center" }}>
           BELIEFX
         </p>
 
@@ -57,7 +57,7 @@ export default function LoginPage() {
             style={{
               flex: 1, padding: "9px 0", borderRadius: 7, border: "none", cursor: "pointer",
               fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
-              background: tab === "signin" ? "#F0A500" : "transparent",
+              background: tab === "signin" ? "var(--accent-blue-light)" : "transparent",
               color: tab === "signin" ? "#0A0C10" : "rgba(255,255,255,0.6)",
               transition: "all 150ms",
             }}
@@ -70,7 +70,7 @@ export default function LoginPage() {
             style={{
               flex: 1, padding: "9px 0", borderRadius: 7, border: "none", cursor: "pointer",
               fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
-              background: tab === "signup" ? "#F0A500" : "transparent",
+              background: tab === "signup" ? "var(--accent-blue-light)" : "transparent",
               color: tab === "signup" ? "#0A0C10" : "rgba(255,255,255,0.6)",
               transition: "all 150ms",
             }}
@@ -116,7 +116,7 @@ export default function LoginPage() {
             </p>
             <ol style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.8, paddingLeft: 18, marginBottom: 20 }}>
               <li>Dashboard Back4App → Database → Browser</li>
-              <li>Classe <strong style={{ color: "#F0A500" }}>_User</strong> → "+ Add row"</li>
+              <li>Classe <strong style={{ color: "var(--accent-blue-light)" }}>_User</strong> → "+ Add row"</li>
               <li>Remplis <code>username</code> et <code>password</code></li>
             </ol>
             <button type="button" onClick={() => setTab("signin")} className="nav-cage" style={{ width: "100%", justifyContent: "center", padding: "11px 18px", fontSize: 13 }}>
