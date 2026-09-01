@@ -84,7 +84,7 @@ export default function CourbeDeTauxTable() {
           <button
             onClick={charger}
             disabled={loading}
-            className="px-3 py-1.5 text-sm rounded-md bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm rounded-md bg-[#0F2A5C] text-white hover:bg-[#16386F] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Chargement..." : "Recharger"}
           </button>
