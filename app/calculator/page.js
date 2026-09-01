@@ -88,7 +88,7 @@ export default function CalculatorPage() {
         </div>
 
         {usdBase && !form.prixActuel && (
-          <div style={{ display: "flex", gap: 8, background: "rgba(240,165,0,0.07)", border: "1px solid rgba(240,165,0,0.2)", borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ display: "flex", gap: 8, background: "rgba(56,189,248,0.07)", border: "1px solid rgba(56,189,248,0.2)", borderRadius: 8, padding: "10px 12px" }}>
             <AlertTriangle size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
             <p style={{ fontSize: 12, color: "var(--sub)", lineHeight: 1.5 }}>
               {form.symbol} peut être calculé automatiquement (le $ est la devise de base) — remplis le
@@ -97,7 +97,7 @@ export default function CalculatorPage() {
           </div>
         )}
         {!usdQuote && !usdBase && (
-          <div style={{ display: "flex", gap: 8, background: "rgba(240,165,0,0.07)", border: "1px solid rgba(240,165,0,0.2)", borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ display: "flex", gap: 8, background: "rgba(56,189,248,0.07)", border: "1px solid rgba(56,189,248,0.2)", borderRadius: 8, padding: "10px 12px" }}>
             <AlertTriangle size={14} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
             <p style={{ fontSize: 12, color: "var(--sub)", lineHeight: 1.5 }}>
               {form.symbol} est une paire croisée sans $ en base ni en cotation (ou un instrument non-Forex) —
