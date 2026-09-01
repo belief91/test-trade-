@@ -73,7 +73,7 @@ export default function DashboardPage() {
         <div className="hero-band__glow-b" />
         <div className="hero-band__grid" />
         <div className="hero-band__content" style={{ maxWidth: 1100, margin: "0 auto", padding: "44px 20px 40px" }}>
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#F0A500", marginBottom: 10 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--accent-blue-light)", marginBottom: 10 }}>
             BELIEFX
           </p>
           <h1 style={{ fontSize: 36, lineHeight: 1.1, fontFamily: "Space Grotesk, sans-serif", fontWeight: 700, color: "#FFFFFF", margin: 0, maxWidth: 480 }}>
