@@ -152,8 +152,8 @@ export default function CotTffTable() {
           margin: 4px 0 0 0;
         }
         .cot-bouton-recharger {
-          background: #F0A500;
-          color: #0A0C10;
+          background: #0F2A5C;
+          color: #fff;
           border: none;
           border-radius: 8px;
           padding: 10px 18px;
