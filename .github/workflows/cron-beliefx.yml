@@ -32,6 +32,11 @@ on:
     - cron: "0 3 * * 6"
     # Actu Géopolitique (TV5MONDE) : toutes les 4h, ancré sur 5h15 GMT+3
     - cron: "15 2,6,10,14,18,22 * * *"
+    # Keep-alive Render (BELIEFX-scraping, plan free) : toutes les 10 min,
+    # marge de sécurité vs. les 15 min de sleep Render (le scheduler GH
+    # Actions n'est pas garanti à la minute près). Ping /health, pas
+    # d'auth requise, coût nul (repo public = minutes Actions illimitées).
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -116,8 +121,26 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 2,6,10,14,18,22 * * *'
     steps:
+      - name: Warm-up Render (réveil BELIEFX-scraping avant appel)
+        run: |
+          for i in $(seq 1 12); do
+            if curl -sf --max-time 10 https://beliefx-scraping.onrender.com/health; then
+              echo "Render prêt (tentative $i/12)"
+              exit 0
+            fi
+            echo "Render pas encore prêt, tentative $i/12..."
+            sleep 5
+          done
+          echo "Render ne répond toujours pas après 60s — on tente quand même l'appel réel"
       - name: Scraper + filtrer actu géopolitique (toutes les 4h, ancré 5h15 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/geopolitics-news
+
+  render-keepalive:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 * * * *'
+    steps:
+      - name: Ping /health BELIEFX-scraping (empêche le sleep Render)
+        run: curl -sf --max-time 15 https://beliefx-scraping.onrender.com/health
 
   test-central-bank-fed:
     runs-on: ubuntu-latest
@@ -127,3 +150,4 @@ jobs:
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/test/central-bank-fed \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
