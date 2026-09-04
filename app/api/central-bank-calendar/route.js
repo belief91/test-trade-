@@ -8,11 +8,14 @@
 // FIX VOLUME #2 (27/08) : construireContexteMacroDuJour() retourne
 // desormais { contextePartage, evenements } au lieu d'un tableau plat ou
 // chaque evenement recopiait l'integralite du contexte de ses familles
-// liees. Le fichier R2 calendrier-consolide reflete cette nouvelle forme
-// -- lib/ai-synthesis-service.js (modifie dans le meme commit) sait la
-// lire. Ne JAMAIS deployer ce fichier sans le fix correspondant dans
-// ai-synthesis-service.js -- c'est exactement le type d'incoherence
-// config/code qui a cause l'incident du 26/08 (qwen).
+// liees.
+//
+// FIX CRITIQUE #3 (04/09) : construireContexteMacroDuJour() retourne
+// desormais aussi dateCible et dateUtiliseeEnFallback (voir
+// lib/macro-consolidator-service.js) — exposes ici dans le fichier R2
+// lui-meme, pour voir directement si le repli d'1 jour a ete utilise
+// (retard de cron franchissant minuit GMT+3), sans avoir a recalculer
+// ou creuser les logs.
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
@@ -65,7 +68,12 @@ export async function GET() {
 
     const { nouveaux, misAJour } = await upsertVersBack4App(evenements);
 
-    const { contextePartage, evenements: evenementsAvecContexte } = await construireContexteMacroDuJour(evenements);
+    const {
+      contextePartage,
+      evenements: evenementsAvecContexte,
+      dateCible,
+      dateUtiliseeEnFallback,
+    } = await construireContexteMacroDuJour(evenements);
 
     const cleR2 = genererCleDuJour("calendrier-bc");
     await ecrireJSONDansR2(cleR2, {
@@ -77,6 +85,8 @@ export async function GET() {
     const cleR2Consolide = genererCleDuJour("calendrier-consolide");
     await ecrireJSONDansR2(cleR2Consolide, {
       generatedAt: new Date().toISOString(),
+      dateCible,
+      dateUtiliseeEnFallback,
       count: evenementsAvecContexte.length,
       contextePartage,
       data: evenementsAvecContexte,
@@ -91,6 +101,8 @@ export async function GET() {
       misAJour,
       cleR2,
       cleR2Consolide,
+      dateCible,
+      dateUtiliseeEnFallback,
       archive,
       data: evenements,
       contexteMacro: evenementsAvecContexte,
