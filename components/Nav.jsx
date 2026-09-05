@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut, LineChart, Calendar, TrendingUp, Landmark, Sparkles, Globe } from "lucide-react";
+import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut, LineChart, Calendar, TrendingUp, Landmark, Sparkles, Globe, CalendarClock } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { logout } from "../lib/auth";
 
@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/cot", label: "COT", icon: LineChart },
   { href: "/courbe-de-taux", label: "Courbe de taux", icon: TrendingUp },
   { href: "/central-bank-calendar", label: "Calendrier BC", icon: Calendar },
+  { href: "/calendrier-consolide", label: "Calendrier BC (aligné)", icon: CalendarClock },
   { href: "/bank-central", label: "Banque Centrale", icon: Landmark },
   { href: "/actu-geopolitique", label: "Actu Géopolitique", icon: Globe },
   { href: "/synthese", label: "Synthèse IA", icon: Sparkles },
