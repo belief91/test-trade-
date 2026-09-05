@@ -5,24 +5,21 @@
 //
 // FIX PERF (26/08) : maxDuration en filet de securite.
 //
-// FIX VOLUME #2 (27/08) : construireContexteMacroDuJour() retourne
-// desormais { contextePartage, evenements } au lieu d'un tableau plat ou
-// chaque evenement recopiait l'integralite du contexte de ses familles
-// liees.
-//
-// FIX CRITIQUE #3 (04/09) : construireContexteMacroDuJour() retourne
-// desormais aussi dateCible et dateUtiliseeEnFallback (voir
-// lib/macro-consolidator-service.js) — exposes ici dans le fichier R2
-// lui-meme, pour voir directement si le repli d'1 jour a ete utilise
-// (retard de cron franchissant minuit GMT+3), sans avoir a recalculer
-// ou creuser les logs.
+// FIX CRITIQUE #4 (05/09) : construireContexteMacroDuJour() retourne
+// desormais clesTraitees au lieu de dateCible/dateUtiliseeEnFallback
+// (toute logique basee sur l'horloge a ete abandonnee, voir
+// lib/macro-consolidator-service.js). Ces cles sont enregistrees ICI,
+// APRES confirmation que l'ecriture R2 du fichier consolide a reussi —
+// jamais avant, pour ne pas marquer un evenement comme "traite" si la
+// sauvegarde a echoue (auquel cas il redeviendra eligible au prochain
+// run, comportement voulu).
 
 import { NextResponse } from "next/server";
 import { scraperCalendrierBC } from "../../../lib/central-bank-calendar-service.js";
 import Parse from "../../../lib/back4app-server.js";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../lib/r2-client";
 import { construireContexteMacroDuJour } from "../../../lib/macro-consolidator-service";
-import { fusionnerDansArchiveCalendrier } from "../../../lib/calendrier-archive-r2";
+import { fusionnerDansArchiveCalendrier, enregistrerEvenementsTraites } from "../../../lib/calendrier-archive-r2";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -71,8 +68,7 @@ export async function GET() {
     const {
       contextePartage,
       evenements: evenementsAvecContexte,
-      dateCible,
-      dateUtiliseeEnFallback,
+      clesTraitees,
     } = await construireContexteMacroDuJour(evenements);
 
     const cleR2 = genererCleDuJour("calendrier-bc");
@@ -85,12 +81,16 @@ export async function GET() {
     const cleR2Consolide = genererCleDuJour("calendrier-consolide");
     await ecrireJSONDansR2(cleR2Consolide, {
       generatedAt: new Date().toISOString(),
-      dateCible,
-      dateUtiliseeEnFallback,
       count: evenementsAvecContexte.length,
       contextePartage,
       data: evenementsAvecContexte,
     });
+
+    // FIX CRITIQUE #4 (05/09) : enregistré seulement APRÈS confirmation
+    // que l'écriture ci-dessus a réussi (aucune exception levée avant
+    // ce point). Si l'écriture R2 avait échoué, on ne serait jamais
+    // arrivé ici — les événements resteraient éligibles au run suivant.
+    await enregistrerEvenementsTraites(clesTraitees);
 
     const archive = await fusionnerDansArchiveCalendrier(evenements);
 
@@ -101,8 +101,7 @@ export async function GET() {
       misAJour,
       cleR2,
       cleR2Consolide,
-      dateCible,
-      dateUtiliseeEnFallback,
+      clesTraiteesCeRun: clesTraitees,
       archive,
       data: evenements,
       contexteMacro: evenementsAvecContexte,
