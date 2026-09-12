@@ -170,7 +170,7 @@ Cette liste n'est PAS exhaustive.
 
 Ne sélectionne jamais un canal simplement parce qu'il est historiquement associé à l'événement.
 
-CHAÎne OBLIGATOIRE
+CHAÎNE OBLIGATOIRE
 
 ÉVÉNEMENT
 →
