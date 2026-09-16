@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut, LineChart, Calendar, TrendingUp, Landmark, Sparkles, Globe } from "lucide-react";
+import { LayoutDashboard, BookOpen, Target, NotebookPen, Sun, Moon, Image as ImageIcon, Calculator, LogOut, LineChart, Calendar, TrendingUp, Landmark, Sparkles, Globe, Upload } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { logout } from "../lib/auth";
 
@@ -19,6 +19,10 @@ const LINKS = [
   { href: "/bank-central", label: "Banque Centrale", icon: Landmark },
   { href: "/actu-geopolitique", label: "Actu Géopolitique", icon: Globe },
   { href: "/synthese", label: "Synthèse IA", icon: Sparkles },
+  // FIX (15/09) : lien manquant vers la page de la méthode gratuite —
+  // sans lui, /admin/categoriser n'était accessible que par URL directe,
+  // invisible dans le menu.
+  { href: "/admin/categoriser", label: "Méthode gratuite", icon: Upload },
 ];
 
 export default function Nav() {
