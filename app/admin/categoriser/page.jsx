@@ -2,24 +2,25 @@
 
 // app/admin/categoriser/page.jsx
 //
-// MÉTHODE GRATUITE : une seule page pour les deux étapes.
-// 1. Télécharger le document du jour (bouton) — remplace le curl manuel.
-// 2. Coller la réponse Claude chat et l'envoyer pour catégorisation.
-//
-// Le secret n'est JAMAIS en dur dans ce fichier — un champ dédié permet
-// de le coller à chaque utilisation, pour qu'il ne reste jamais dans le
-// code source livré au navigateur.
+// FIX (15/09) : le secret est maintenant lu directement depuis le DOM au
+// moment du clic (via useRef), plus depuis le state React seul. Cause
+// probable du "Unauthorized" observé : l'autocomplétion du navigateur
+// remplit visuellement le champ sans toujours déclencher l'événement
+// onChange qui synchronise le state React — fréquent sur mobile/tablette.
+// Lire .value directement au clic élimine ce risque, peu importe
+// comment le champ a été rempli.
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export default function PageCategoriser() {
-  const [secret, setSecret] = useState("");
+  const secretRef = useRef(null);
 
   // --- Téléchargement ---
   const [telechargementEnCours, setTelechargementEnCours] = useState(false);
   const [erreurTelechargement, setErreurTelechargement] = useState(null);
 
   async function telecharger() {
+    const secret = secretRef.current?.value || "";
     setTelechargementEnCours(true);
     setErreurTelechargement(null);
 
@@ -61,6 +62,7 @@ export default function PageCategoriser() {
   const [erreurEnvoi, setErreurEnvoi] = useState(null);
 
   async function envoyer() {
+    const secret = secretRef.current?.value || "";
     setEnvoiEnCours(true);
     setResultat(null);
     setErreurEnvoi(null);
@@ -95,8 +97,8 @@ export default function PageCategoriser() {
         <label className="block text-sm font-medium mb-1">Secret (CRON_SECRET)</label>
         <input
           type="password"
-          value={secret}
-          onChange={(e) => setSecret(e.target.value)}
+          ref={secretRef}
+          defaultValue=""
           className="w-full border rounded px-3 py-2"
           placeholder="Colle le secret ici — utilisé pour les deux étapes ci-dessous"
         />
@@ -111,7 +113,7 @@ export default function PageCategoriser() {
         </p>
         <button
           onClick={telecharger}
-          disabled={telechargementEnCours || !secret}
+          disabled={telechargementEnCours}
           className="px-4 py-2 rounded bg-black text-white disabled:opacity-40"
         >
           {telechargementEnCours ? "Génération en cours..." : "Télécharger"}
@@ -138,7 +140,7 @@ export default function PageCategoriser() {
         />
         <button
           onClick={envoyer}
-          disabled={envoiEnCours || !secret || !texteReponse}
+          disabled={envoiEnCours || !texteReponse}
           className="px-4 py-2 rounded bg-black text-white disabled:opacity-40"
         >
           {envoiEnCours ? "Envoi en cours..." : "Envoyer"}
