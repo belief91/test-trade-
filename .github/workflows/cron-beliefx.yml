@@ -1,45 +1,52 @@
 name: Cron BELIEFX
 
-# Fichier unique consolidÃ© â€” remplace vercel.json (crons) ET l'ancien
-# cron-bond-yields.yml. Toute la planification du projet vit dÃ©sormais
-# ici, un seul endroit Ã  auditer. Chaque job correspond Ã  UNE route,
-# jamais deux jobs diffÃ©rents n'appellent la mÃªme route Ã  des horaires
-# diffÃ©rents (cause du bug de doublon banque centrale dÃ©jÃ  rencontrÃ©).
+# Fichier unique consolidé — remplace vercel.json (crons) ET l'ancien
+# cron-bond-yields.yml. Toute la planification du projet vit désormais
+# ici, un seul endroit à auditer. Chaque job correspond à UNE route,
+# jamais deux jobs différents n'appellent la même route à des horaires
+# différents (cause du bug de doublon banque centrale déjà rencontré).
+#
+# FIX (15/09) : tout le scraping (hors banque centrale) resserré pour
+# finir avant 20h00 GMT+3. La banque centrale reste la seule exception,
+# toujours à 22h00 (synthèse quotidienne 30 min après, à 22h30) —
+# objectif : éviter les désaccords de timing qui faisaient sauter des
+# données d'un jour sur l'autre.
 
 on:
   schedule:
-  # TEST ISOLÃ‰ (29/08) â€” central-bank-fed, 4x/jour, 6h GMT+3 d'Ã©cart :
+  # TEST ISOLÉ (29/08) — central-bank-fed, 4x/jour, 6h GMT+3 d'écart :
     # 03h00, 09h00, 15h00, 21h00 GMT+3.
     - cron: "0 0,6,12,18 * * *"
     # Reconnaissance BC (matin) : 03h00 UTC = 06h00 GMT+3
     - cron: "0 3 * * *"
-    # Scraping gÃ©nÃ©rique : 19h00 UTC = 22h00 GMT+3
+    # Bond yields (scraping brut) : 16h00 UTC = 19h00 GMT+3
+    - cron: "0 16 * * *"
+    # Bond yields (précalcul mécanique) : 16h15 UTC = 19h15 GMT+3
+    - cron: "15 16 * * *"
+    # COT (précalcul mécanique) : 16h30 UTC = 19h30 GMT+3
+    - cron: "30 16 * * *"
+    # Calendrier macro : 16h45 UTC = 19h45 GMT+3
+    - cron: "45 16 * * *"
+    # Scraping générique : 16h55 UTC = 19h55 GMT+3 (juste avant 20h00)
+    - cron: "55 16 * * *"
+    # Banque centrale (documents filtrés) : 19h00 UTC = 22h00 GMT+3
+    # SEULE EXCEPTION à la règle des 20h00, cf. note en tête de fichier.
     - cron: "0 19 * * *"
-    # Banque centrale (documents filtrÃ©s) : 19h00 UTC = 22h00 GMT+3
-    - cron: "0 19 * * *"
-    # Bond yields (scraping brut) : 17h00 UTC = 20h00 GMT+3
-    - cron: "0 17 * * *"
-    # Bond yields (prÃ©calcul mÃ©canique) : 17h15 UTC = 20h15 GMT+3
-    - cron: "15 17 * * *"
-    # COT (prÃ©calcul mÃ©canique) : 17h30 UTC = 20h30 GMT+3
-    - cron: "30 17 * * *"
-    # Calendrier BC : 18h45 UTC = 21h45 GMT+3 (fin de journÃ©e, capture
-    # les publications de session US avant la synthÃ¨se du soir)
-    - cron: "45 18 * * *"
-    # SynthÃ¨se quotidienne : 19h30 UTC = 22h30 GMT+3, lundi-vendredi
+    # Synthèse quotidienne : 19h30 UTC = 22h30 GMT+3, lundi-vendredi
+    # (30 min après la banque centrale, pour lui laisser le temps de finir)
     - cron: "30 19 * * 1-5"
-    # SynthÃ¨se hebdomadaire : 03h00 UTC = 06h00 GMT+3, samedi
+    # Synthèse hebdomadaire : 03h00 UTC = 06h00 GMT+3, samedi
     - cron: "0 3 * * 6"
-    # Actu GÃ©opolitique (TV5MONDE) : toutes les 4h, ancrÃ© sur 5h15 GMT+3
+    # Actu Géopolitique (TV5MONDE) : toutes les 4h, ancré sur 5h15 GMT+3
     - cron: "15 2,6,10,14,18,22 * * *"
     # Keep-alive Render (BELIEFX-scraping, plan free) : toutes les 10 min,
-    # marge de sÃ©curitÃ© vs. les 15 min de sleep Render (le scheduler GH
-    # Actions n'est pas garanti Ã  la minute prÃ¨s). Ping /health, pas
-    # d'auth requise, coÃ»t nul (repo public = minutes Actions illimitÃ©es).
+    # marge de sécurité vs. les 15 min de sleep Render (le scheduler GH
+    # Actions n'est pas garanti à la minute près). Ping /health, pas
+    # d'auth requise, coût nul (repo public = minutes Actions illimitées).
     - cron: "*/10 * * * *"
-    # Reset mensuel Journal (conditionnÃ© screenshot "aprÃ¨s") : 20h50 UTC
-    # = 23h50 GMT+3, TOUS les jours â€” la route elle-mÃªme vÃ©rifie si
-    # c'est le dernier jour du mois et s'arrÃªte sinon (GitHub Actions ne
+    # Reset mensuel Journal (conditionné screenshot "après") : 20h50 UTC
+    # = 23h50 GMT+3, TOUS les jours — la route elle-même vérifie si
+    # c'est le dernier jour du mois et s'arrête sinon (GitHub Actions ne
     # sait pas planifier "dernier jour du mois" nativement).
     - cron: "50 20 * * *"
   workflow_dispatch: {}
@@ -56,9 +63,9 @@ jobs:
 
   scraping-generique:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 19 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '55 16 * * *'
     steps:
-      - name: Scraping gÃ©nÃ©rique (22h00 GMT+3)
+      - name: Scraping générique (19h55 GMT+3)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/scraping \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
@@ -67,48 +74,48 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 19 * * *'
     steps:
-      - name: Pipeline banque centrale (22h00 GMT+3)
+      - name: Pipeline banque centrale (22h00 GMT+3 — seule exception à la règle des 20h00)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/central-bank-scrape \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
   bond-yields-scrape:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 17 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 16 * * *'
     steps:
-      - name: Scraper bond yields G10 (20h00 GMT+3)
+      - name: Scraper bond yields G10 (19h00 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/bond-yields
 
   bond-yields-analysis:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 17 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 16 * * *'
     steps:
-      - name: PrÃ©calcul courbe de taux (20h15 GMT+3)
+      - name: Précalcul courbe de taux (19h15 GMT+3)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/bond-yields/analysis \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
   cot-precalcul:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 17 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 16 * * *'
     steps:
-      - name: PrÃ©calcul COT (20h30 GMT+3)
+      - name: Précalcul COT (19h30 GMT+3)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cot/analysis \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
   calendrier-bc:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '45 18 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '45 16 * * *'
     steps:
-      - name: Scraper + consolider calendrier BC (21h45 GMT+3)
+      - name: Scraper + consolider calendrier macro (19h45 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/central-bank-calendar
 
   synthese-quotidienne:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 19 * * 1-5'
     steps:
-      - name: SynthÃ¨se IA quotidienne (22h30 GMT+3, lun-ven)
+      - name: Synthèse IA quotidienne (22h30 GMT+3, lun-ven)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/synthese-quotidienne \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
@@ -117,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * 6'
     steps:
-      - name: SynthÃ¨se IA hebdomadaire (06h00 GMT+3, samedi)
+      - name: Synthèse IA hebdomadaire (06h00 GMT+3, samedi)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/synthese-hebdo \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
@@ -126,32 +133,32 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 2,6,10,14,18,22 * * *'
     steps:
-      - name: Warm-up Render (rÃ©veil BELIEFX-scraping avant appel)
+      - name: Warm-up Render (réveil BELIEFX-scraping avant appel)
         run: |
           for i in $(seq 1 12); do
             if curl -sf --max-time 10 https://beliefx-scraping.onrender.com/health; then
-              echo "Render prÃªt (tentative $i/12)"
+              echo "Render prêt (tentative $i/12)"
               exit 0
             fi
-            echo "Render pas encore prÃªt, tentative $i/12..."
+            echo "Render pas encore prêt, tentative $i/12..."
             sleep 5
           done
-          echo "Render ne rÃ©pond toujours pas aprÃ¨s 60s â€” on tente quand mÃªme l'appel rÃ©el"
-      - name: Scraper + filtrer actu gÃ©opolitique (toutes les 4h, ancrÃ© 5h15 GMT+3)
+          echo "Render ne répond toujours pas après 60s — on tente quand même l'appel réel"
+      - name: Scraper + filtrer actu géopolitique (toutes les 4h, ancré 5h15 GMT+3)
         run: curl -sf https://test-trade-eosin.vercel.app/api/geopolitics-news
 
   render-keepalive:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 * * * *'
     steps:
-      - name: Ping /health BELIEFX-scraping (empÃªche le sleep Render)
+      - name: Ping /health BELIEFX-scraping (empêche le sleep Render)
         run: curl -sf --max-time 15 https://beliefx-scraping.onrender.com/health
 
   test-central-bank-fed:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 0,6,12,18 * * *'
     steps:
-      - name: TEST isolÃ© â€” scraping Fed sans calendrier BC (4x/jour, 03h/09h/15h/21h GMT+3)
+      - name: TEST isolé — scraping Fed sans calendrier BC (4x/jour, 03h/09h/15h/21h GMT+3)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/test/central-bank-fed \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
