@@ -4,15 +4,16 @@
 // bug de requête Parse sur champ absent (27-28/08), trace R2 même si
 // rien à traiter (28/08), retrait du fallback recupererDernierEventConnu
 // (28/08), chemin renommé vers database/banque-centrale/ (29/08),
-// mettreAJourFichierDevise partagée (29/08).
+// mettreAJourFichierDevise partagée (29/08), FIX 10 seuil unifié
+// contenuEstSuffisant (29/08).
 //
-// FIX 10 (29/08) : la branche "skip" testait phrases.length === 0, mais
-// enregistrerDocumentFinal() exige désormais contenuEstSuffisant() (au
-// moins SEUIL_MIN_PHRASES = 3) pour marquer "done". Avec l'ancien test,
-// un résultat de 1 ou 2 phrases prenait la branche "ok" ici (donc
-// écrivait dans R2 avec status:"ok") alors que Back4App l'aurait marqué
-// "skipped" en interne — incohérence entre les deux systèmes. Les deux
-// utilisent maintenant exactement le même seuil.
+// FIX (16/09) : ingestion automatique bc_documents à la fin de chaque
+// cycle — pour chaque devise réellement touchée ce run,
+// ingurgiterDepuisArchiveDevise() relit database/banque-centrale/
+// {devise}.json (déjà à jour via mettreAJourFichierDevise) et déduplique
+// par hash dans bc_documents. Plus besoin de lancer le script manuel
+// bc-state-builder.js après coup — l'entrepôt déduplié se construit tout
+// seul à chaque scraping réel.
 
 import { NextResponse } from "next/server";
 import {
@@ -24,6 +25,7 @@ import {
 import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
+import { ingurgiterDepuisArchiveDevise } from "../../../../lib/bc-state/bc-documents";
 import {
   ecrireJSONDansR2,
   genererCleDuJour,
@@ -44,6 +46,9 @@ export const maxDuration = 60;
  *              substitution venant d'un autre jour/événement.
  *   - "error": échec technique du scraping (retenté aux prochains crons
  *              tant que tentatives < 3)
+ *
+ * En fin de cycle : ingestion automatique dans bc_documents pour chaque
+ * devise touchée (voir FIX 16/09 ci-dessus).
  */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -70,6 +75,7 @@ export async function GET(request) {
 
   const resultats = [];
   const dateISOJour = new Date().toISOString().split("T")[0];
+  const devisesTouchees = new Set();
 
   for (const entree of entrees) {
     const banqueCentrale = entree.get("banqueCentrale");
@@ -100,6 +106,7 @@ export async function GET(request) {
             status: "skip",
             documentFinal: [],
           });
+          devisesTouchees.add(devise);
         }
         continue;
       }
@@ -116,6 +123,7 @@ export async function GET(request) {
           status: "ok",
           documentFinal,
         });
+        devisesTouchees.add(devise);
       }
 
     } catch (error) {
@@ -147,5 +155,17 @@ export async function GET(request) {
     data: resultats,
   });
 
-  return NextResponse.json({ status: "ok", cleR2, cleArchive, resultats });
+  // FIX (16/09) : ingestion bc_documents pour chaque devise touchée ce
+  // cycle — non bloquant pour la réponse principale si une devise échoue
+  const ingestionBcDocuments = {};
+  for (const devise of devisesTouchees) {
+    try {
+      ingestionBcDocuments[devise] = await ingurgiterDepuisArchiveDevise(devise);
+    } catch (err) {
+      console.error(`Erreur ingestion bc_documents pour ${devise} :`, err);
+      ingestionBcDocuments[devise] = { erreur: err.message };
+    }
+  }
+
+  return NextResponse.json({ status: "ok", cleR2, cleArchive, resultats, ingestionBcDocuments });
 }
