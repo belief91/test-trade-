@@ -5,12 +5,15 @@
 // Historique : chemin Render cassé corrigé, fermeture propre des entrées
 // en erreur, retrait du fallback recupererDernierEventConnu (28/08),
 // écriture par devise ajoutée puis chemin renommé vers
-// database/banque-centrale/ (29/08), mettreAJourFichierDevise partagée.
+// database/banque-centrale/ (29/08), mettreAJourFichierDevise partagée,
+// FIX 10 contenuEstSuffisant (29/08).
 //
-// FIX 10 (29/08) : même correction que central-bank-scrape/route.js —
-// utilise contenuEstSuffisant() au lieu de phrases.length === 0, pour
-// rester cohérent avec ce qu'enregistrerDocumentFinal() décide en
-// interne (voir lib/central-bank-pipeline-service.js).
+// FIX (16/09) : ingestion automatique bc_documents à la fin du cycle,
+// même logique que central-bank-scrape/route.js — pour chaque devise
+// touchée, ingurgiterDepuisArchiveDevise() déduplique par hash dans
+// bc_documents. Les deux points d'entrée (cron auto + bouton manuel)
+// écrivant tous deux dans database/banque-centrale/{devise}.json,
+// les deux doivent déclencher la même ingestion pour rester cohérents.
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -23,6 +26,7 @@ import {
 } from "../../../../lib/central-bank-pipeline-service";
 import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
+import { ingurgiterDepuisArchiveDevise } from "../../../../lib/bc-state/bc-documents";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
@@ -49,11 +53,13 @@ function detecterEvenementsBancaires(evenementsDuJour) {
  *
  * Architecture stricte, deux issues possibles par événement bancaire
  * détecté aujourd'hui via le calendrier BC :
- *   - "ok"   : contenu réel scrapé (statement/minutes/discours/...) ET
- *              suffisant (contenuEstSuffisant)
+ *   - "ok"   : contenu réel scrapé ET suffisant (contenuEstSuffisant)
  *   - "skip" : rien de pertinent trouvé, ou contenu insuffisant —
  *              documentFinal vide dans les deux cas.
  *   - "error": échec technique.
+ *
+ * En fin de cycle : ingestion automatique dans bc_documents pour chaque
+ * devise touchée (voir FIX 16/09 ci-dessus).
  */
 export async function POST(request) {
   try {
@@ -67,6 +73,7 @@ export async function POST(request) {
 
     const resultats = [];
     const dateISOJour = new Date().toISOString().split("T")[0];
+    const devisesTouchees = new Set();
 
     for (const evt of evenementsBancaires) {
       const entree = await enregistrerReconnaissance({
@@ -96,6 +103,7 @@ export async function POST(request) {
             status: "skip",
             documentFinal: [],
           });
+          devisesTouchees.add(evt.devise);
           continue;
         }
 
@@ -110,6 +118,7 @@ export async function POST(request) {
           status: "ok",
           documentFinal,
         });
+        devisesTouchees.add(evt.devise);
 
       } catch (error) {
         console.error(`Erreur scraping ${evt.banqueCentrale}/${evt.categorie} :`, error);
@@ -126,7 +135,18 @@ export async function POST(request) {
       data: resultats,
     });
 
-    return NextResponse.json({ status: "ok", cleR2, resultats });
+    // FIX (16/09) : ingestion bc_documents pour chaque devise touchée
+    const ingestionBcDocuments = {};
+    for (const devise of devisesTouchees) {
+      try {
+        ingestionBcDocuments[devise] = await ingurgiterDepuisArchiveDevise(devise);
+      } catch (err) {
+        console.error(`Erreur ingestion bc_documents pour ${devise} :`, err);
+        ingestionBcDocuments[devise] = { erreur: err.message };
+      }
+    }
+
+    return NextResponse.json({ status: "ok", cleR2, resultats, ingestionBcDocuments });
   } catch (error) {
     console.error("Erreur pipeline manuel :", error);
     return NextResponse.json({ status: "error", message: error.message }, { status: 500 });
