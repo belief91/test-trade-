@@ -10,10 +10,12 @@
 // FIX (16/09) : ingestion automatique bc_documents à la fin de chaque
 // cycle — pour chaque devise réellement touchée ce run,
 // ingurgiterDepuisArchiveDevise() relit database/banque-centrale/
-// {devise}.json (déjà à jour via mettreAJourFichierDevise) et déduplique
-// par hash dans bc_documents. Plus besoin de lancer le script manuel
-// bc-state-builder.js après coup — l'entrepôt déduplié se construit tout
-// seul à chaque scraping réel.
+// {devise}.json et déduplique par hash dans bc_documents.
+//
+// FIX (19/09) : reconstruction automatique de bc_reference, mais
+// UNIQUEMENT pour les banques dont bc_documents a réellement grossi ce
+// cycle (nouveaux > 0) — évite une écriture R2 inutile les jours où tout
+// était skip/error/déjà-vu.
 
 import { NextResponse } from "next/server";
 import {
@@ -26,6 +28,7 @@ import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { filtrerParagraphes } from "../../../../lib/paragraph-filter-service";
 import { ingurgiterDepuisArchiveDevise } from "../../../../lib/bc-state/bc-documents";
+import { construireBcReference } from "../../../../lib/bc-state/bc-reference";
 import {
   ecrireJSONDansR2,
   genererCleDuJour,
@@ -34,22 +37,6 @@ import {
 
 export const maxDuration = 60;
 
-/**
- * GET /api/cron/central-bank-scrape
- *
- * Architecture stricte, deux issues possibles par entrée traitée :
- *   - "ok"   : événement bancaire du jour trouvé + contenu réel scrapé
- *              ET suffisant (contenuEstSuffisant)
- *   - "skip" : rien de pertinent trouvé, OU contenu trouvé mais
- *              insuffisant (ex: mention légale seule) — documentFinal
- *              vide dans les deux cas, jamais de contenu de
- *              substitution venant d'un autre jour/événement.
- *   - "error": échec technique du scraping (retenté aux prochains crons
- *              tant que tentatives < 3)
- *
- * En fin de cycle : ingestion automatique dans bc_documents pour chaque
- * devise touchée (voir FIX 16/09 ci-dessus).
- */
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
@@ -84,7 +71,6 @@ export async function GET(request) {
 
     try {
       const texte = await scraperBanqueCentraleViaRender(banqueCentrale, categorie);
-
       const phrases = filtrerParagraphes(texte, banqueCentrale);
 
       if (!contenuEstSuffisant(phrases)) {
@@ -155,17 +141,46 @@ export async function GET(request) {
     data: resultats,
   });
 
-  // FIX (16/09) : ingestion bc_documents pour chaque devise touchée ce
-  // cycle — non bloquant pour la réponse principale si une devise échoue
+  // FIX (16/09) : ingestion bc_documents par devise touchée
   const ingestionBcDocuments = {};
+  const banquesAVerifierPourReference = new Set();
+
   for (const devise of devisesTouchees) {
     try {
-      ingestionBcDocuments[devise] = await ingurgiterDepuisArchiveDevise(devise);
+      const resultatIngestion = await ingurgiterDepuisArchiveDevise(devise);
+      ingestionBcDocuments[devise] = resultatIngestion;
+
+      // FIX (19/09) : marque pour reconstruction de reference uniquement
+      // les banques dont bc_documents a reellement grossi ce cycle
+      for (const [banque, stats] of Object.entries(resultatIngestion.banques || {})) {
+        if (stats.nouveaux > 0) {
+          banquesAVerifierPourReference.add(banque);
+        }
+      }
     } catch (err) {
       console.error(`Erreur ingestion bc_documents pour ${devise} :`, err);
       ingestionBcDocuments[devise] = { erreur: err.message };
     }
   }
 
-  return NextResponse.json({ status: "ok", cleR2, cleArchive, resultats, ingestionBcDocuments });
+  // FIX (19/09) : reconstruction bc_reference, seulement si necessaire
+  const referencesMisesAJour = {};
+  for (const banque of banquesAVerifierPourReference) {
+    try {
+      const reference = await construireBcReference(banque);
+      referencesMisesAJour[banque] = { referenceDate: reference.referenceDate };
+    } catch (err) {
+      console.error(`Erreur construction bc_reference pour ${banque} :`, err);
+      referencesMisesAJour[banque] = { erreur: err.message };
+    }
+  }
+
+  return NextResponse.json({
+    status: "ok",
+    cleR2,
+    cleArchive,
+    resultats,
+    ingestionBcDocuments,
+    referencesMisesAJour,
+  });
 }
