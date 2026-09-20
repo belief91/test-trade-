@@ -8,12 +8,13 @@
 // database/banque-centrale/ (29/08), mettreAJourFichierDevise partagée,
 // FIX 10 contenuEstSuffisant (29/08).
 //
-// FIX (16/09) : ingestion automatique bc_documents à la fin du cycle,
-// même logique que central-bank-scrape/route.js — pour chaque devise
-// touchée, ingurgiterDepuisArchiveDevise() déduplique par hash dans
-// bc_documents. Les deux points d'entrée (cron auto + bouton manuel)
-// écrivant tous deux dans database/banque-centrale/{devise}.json,
-// les deux doivent déclencher la même ingestion pour rester cohérents.
+// FIX (16/09) : ingestion automatique bc_documents à la fin du cycle.
+//
+// FIX (19/09) : reconstruction automatique de bc_reference, uniquement
+// pour les banques dont bc_documents a réellement grossi ce cycle —
+// même logique que central-bank-scrape/route.js, pour rester cohérent
+// entre les deux points d'entrée qui écrivent tous deux dans
+// database/banque-centrale/{devise}.json.
 
 import { NextResponse } from "next/server";
 import { lireEvenementsDuJour } from "../../../../lib/reconnaissance-service";
@@ -27,6 +28,7 @@ import {
 import { mettreAJourFichierDevise } from "../../../../lib/central-bank-archive-r2";
 import { scraperBanqueCentraleViaRender } from "../../../../lib/central-bank-render-client";
 import { ingurgiterDepuisArchiveDevise } from "../../../../lib/bc-state/bc-documents";
+import { construireBcReference } from "../../../../lib/bc-state/bc-reference";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const maxDuration = 60;
@@ -48,19 +50,6 @@ function detecterEvenementsBancaires(evenementsDuJour) {
   return detectes;
 }
 
-/**
- * POST /api/pipeline/run
- *
- * Architecture stricte, deux issues possibles par événement bancaire
- * détecté aujourd'hui via le calendrier BC :
- *   - "ok"   : contenu réel scrapé ET suffisant (contenuEstSuffisant)
- *   - "skip" : rien de pertinent trouvé, ou contenu insuffisant —
- *              documentFinal vide dans les deux cas.
- *   - "error": échec technique.
- *
- * En fin de cycle : ingestion automatique dans bc_documents pour chaque
- * devise touchée (voir FIX 16/09 ci-dessus).
- */
 export async function POST(request) {
   try {
     const evenementsDuJour = await lireEvenementsDuJour();
@@ -135,18 +124,39 @@ export async function POST(request) {
       data: resultats,
     });
 
-    // FIX (16/09) : ingestion bc_documents pour chaque devise touchée
+    // FIX (16/09) : ingestion bc_documents par devise touchée
     const ingestionBcDocuments = {};
+    const banquesAVerifierPourReference = new Set();
+
     for (const devise of devisesTouchees) {
       try {
-        ingestionBcDocuments[devise] = await ingurgiterDepuisArchiveDevise(devise);
+        const resultatIngestion = await ingurgiterDepuisArchiveDevise(devise);
+        ingestionBcDocuments[devise] = resultatIngestion;
+
+        for (const [banque, stats] of Object.entries(resultatIngestion.banques || {})) {
+          if (stats.nouveaux > 0) {
+            banquesAVerifierPourReference.add(banque);
+          }
+        }
       } catch (err) {
         console.error(`Erreur ingestion bc_documents pour ${devise} :`, err);
         ingestionBcDocuments[devise] = { erreur: err.message };
       }
     }
 
-    return NextResponse.json({ status: "ok", cleR2, resultats, ingestionBcDocuments });
+    // FIX (19/09) : reconstruction bc_reference, seulement si necessaire
+    const referencesMisesAJour = {};
+    for (const banque of banquesAVerifierPourReference) {
+      try {
+        const reference = await construireBcReference(banque);
+        referencesMisesAJour[banque] = { referenceDate: reference.referenceDate };
+      } catch (err) {
+        console.error(`Erreur construction bc_reference pour ${banque} :`, err);
+        referencesMisesAJour[banque] = { erreur: err.message };
+      }
+    }
+
+    return NextResponse.json({ status: "ok", cleR2, resultats, ingestionBcDocuments, referencesMisesAJour });
   } catch (error) {
     console.error("Erreur pipeline manuel :", error);
     return NextResponse.json({ status: "error", message: error.message }, { status: 500 });
