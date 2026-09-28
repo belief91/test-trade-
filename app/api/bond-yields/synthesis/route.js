@@ -4,16 +4,24 @@
 // chaque jour (bond-yield-analysis.json du jour), donc elle DOIT être
 // réévaluée à chaque requête, pas figée au build.
 //
+// FIX (28/09) : l'appel IA passe par Vercel AI Gateway (generateText,
+// modèle anthropic/claude-sonnet-5), comme lib/module-synthesis-service.js.
+// Avant : fetch direct sur api.anthropic.com avec ANTHROPIC_API_KEY, absente
+// de Vercel -> le narratif était silencieusement désactivé en production.
+//
 // Chaîne 100% automatique pour les 8 devises G10 :
 // 1. Lit bond-yield-analysis.json du jour depuis R2 (déjà pré-calculé)
 // 2. Pour chaque devise : injecte les spreads/forme/cohérence dans le prompt
-// 3. Envoie à l'API Anthropic (narratif + BIAIS TAUX + VALIDATION uniquement)
+// 3. Envoie au modèle via AI Gateway (narratif + BIAIS TAUX + VALIDATION uniquement)
 // 4. Sauvegarde le résultat sur R2 dans raw/{date}/bond-yield-synthesis.json
 
+import { generateText } from "ai";
 import { lireJSONDepuisR2, ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+
+const MODELE = "anthropic/claude-sonnet-5";
 
 // Construit le prompt pour UNE devise, avec les chiffres déjà calculés par
 // bond-yield-curve-analysis.js — l'IA ne calcule rien, elle rédige uniquement.
@@ -50,40 +58,27 @@ Réponds UNIQUEMENT en JSON strict, sans texte autour, sans balises markdown :
 {"narratif1": "...", "narratif2": "...", "biais_taux": "...", "validation": "..."}`;
 }
 
-async function appellerAnthropic(prompt) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 400,
-      messages: [{ role: "user", content: prompt }],
-    }),
+async function appellerModele(prompt) {
+  const { text } = await generateText({
+    model: MODELE,
+    prompt,
+    maxOutputTokens: 400,
   });
-
-  if (!response.ok) {
-    const erreurTexte = await response.text();
-    throw new Error(`Erreur API Anthropic: ${response.status} ${erreurTexte}`);
-  }
-
-  const data = await response.json();
-  const texteBrut = data.content.find((bloc) => bloc.type === "text")?.text || "{}";
-  const texteNettoye = texteBrut.replace(/```json|```/g, "").trim();
+  const texteNettoye = (text || "{}").replace(/```json|```/g, "").trim();
   return JSON.parse(texteNettoye);
 }
 
 async function analyserUneDevise(resultatDevise) {
-  let narratif = {
-    note: "Clé ANTHROPIC_API_KEY non configurée — narratif non généré, calculs disponibles",
-  };
+  let narratif;
 
-  if (process.env.ANTHROPIC_API_KEY) {
+  try {
     const prompt = construirePrompt(resultatDevise);
-    narratif = await appellerAnthropic(prompt);
+    narratif = await appellerModele(prompt);
+  } catch (err) {
+    console.error(`[bond-yields/synthesis] échec narratif ${resultatDevise.devise} :`, err.message);
+    narratif = {
+      note: `Narratif non généré (${err.message}) — calculs disponibles`,
+    };
   }
 
   return {
@@ -128,7 +123,7 @@ export async function GET() {
       );
     }
 
-    // 2-3. Traite chaque devise séquentiellement (respecte les limites de rate Anthropic)
+    // 2-3. Traite chaque devise séquentiellement (respecte les limites de rate)
     const syntheses = [];
     for (const resultatDevise of resultats) {
       const synthese = await analyserUneDevise(resultatDevise);

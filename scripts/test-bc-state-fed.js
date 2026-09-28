@@ -8,9 +8,16 @@
 // Ne touche PAS a lib/module-synthesis-service.js ni a son prompt de
 // production - systemes entierement separes, comme convenu.
 //
+// FIX : l'appel IA passe maintenant par Vercel AI Gateway (comme le reste
+// du projet) au lieu de api.anthropic.com + ANTHROPIC_API_KEY, qui
+// renvoyait 401 invalid x-api-key. En local, il faut AI_GATEWAY_API_KEY
+// dans .env.local.
+//
 // Usage : node scripts/test-bc-state-fed.js
 
 import fs from "fs";
+
+const MODELE = "anthropic/claude-sonnet-5";
 
 async function executer() {
   const dotenv = await import("dotenv");
@@ -31,32 +38,25 @@ async function executer() {
   console.log(`Documents nouveaux : ${paquet.newDocuments.length}`);
   console.log(`Etat precedent present : ${paquet.previousState ? "oui" : "non (premiere analyse)"}`);
 
-  console.log("\n=== Etape 2 : appel IA ===");
-  const promptSysteme = fs.readFileSync("prompts/test-bc-state-fed.txt", "utf-8");
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1200,
-      system: promptSysteme,
-      messages: [{ role: "user", content: JSON.stringify(paquet, null, 2) }],
-    }),
-  });
-
-  if (!response.ok) {
-    const erreurTexte = await response.text();
-    throw new Error(`Erreur API Anthropic : ${response.status} ${erreurTexte}`);
+  console.log("\n=== Etape 2 : appel IA (Vercel AI Gateway) ===");
+  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
+    throw new Error(
+      "AI_GATEWAY_API_KEY absente de .env.local (cle Vercel AI Gateway : dashboard > AI Gateway > API Keys)."
+    );
   }
 
-  const data = await response.json();
-  const texteBrut = data.content.find((bloc) => bloc.type === "text")?.text || "{}";
-  const texteNettoye = texteBrut.replace(/```json|```/g, "").trim();
+  // Import apres dotenv.config() pour que la cle soit deja chargee
+  const { generateText } = await import("ai");
+  const promptSysteme = fs.readFileSync("prompts/test-bc-state-fed.txt", "utf-8");
+
+  const { text: texteBrut } = await generateText({
+    model: MODELE,
+    system: promptSysteme,
+    prompt: JSON.stringify(paquet, null, 2),
+    maxOutputTokens: 1200,
+  });
+
+  const texteNettoye = (texteBrut || "{}").replace(/```json|```/g, "").trim();
 
   let resultatIA;
   try {
@@ -86,9 +86,14 @@ async function executer() {
   console.log(JSON.stringify(relu, null, 2));
 }
 
+// FIX : process.exit() force pendant que des handles reseau se ferment
+// provoquait "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" sous
+// Windows. process.exitCode laisse Node se terminer proprement.
 executer()
-  .then(() => process.exit(0))
+  .then(() => {
+    process.exitCode = 0;
+  })
   .catch((err) => {
     console.error("Erreur test-bc-state-fed :", err);
-    process.exit(1);
+    process.exitCode = 1;
   });

@@ -9,13 +9,21 @@
 // mécanique /api/cot/analysis — historique dédié déjà alimenté chaque
 // vendredi par cot-historique-r2.js, fiable et confirmé fonctionnel.
 //
-// Le reste (prompt, appel Anthropic, structure de sortie) reste
-// entièrement inchangé — c'est ton contenu métier, je ne l'ai pas touché.
+// FIX (28/09) : l'appel IA passe par Vercel AI Gateway (generateText,
+// modèle anthropic/claude-sonnet-5), comme lib/module-synthesis-service.js.
+// Avant : fetch direct sur api.anthropic.com avec ANTHROPIC_API_KEY, absente
+// de Vercel -> le narratif était silencieusement désactivé en production.
+//
+// Le reste (prompt, structure de sortie) reste entièrement inchangé —
+// c'est ton contenu métier, je ne l'ai pas touché.
 
+import { generateText } from "ai";
 import { fetchHistoriqueCOT } from "../../../../lib/cot-historique-r2";
 import { ecrireJSONDansR2, genererCleDuJour } from "../../../../lib/r2-client";
 import { analyserDevise } from "../../../../lib/cot-analytics";
 import { classifierCOT } from "../../../../lib/cot-classification";
+
+const MODELE = "anthropic/claude-sonnet-5";
 
 function construirePrompt(classification, vueMacro) {
   const c = classification;
@@ -65,29 +73,13 @@ Réponds UNIQUEMENT en JSON strict, sans texte autour, sans balises markdown :
 {"action": "...", "confiance": "...", "justificationConfiance": "..."}`;
 }
 
-async function appellerAnthropic(prompt) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 500,
-      messages: [{ role: "user", content: prompt }],
-    }),
+async function appellerModele(prompt) {
+  const { text } = await generateText({
+    model: MODELE,
+    prompt,
+    maxOutputTokens: 500,
   });
-
-  if (!response.ok) {
-    const erreurTexte = await response.text();
-    throw new Error(`Erreur API Anthropic: ${response.status} ${erreurTexte}`);
-  }
-
-  const data = await response.json();
-  const texteBrut = data.content.find(bloc => bloc.type === "text")?.text || "{}";
-  const texteNettoye = texteBrut.replace(/```json|```/g, "").trim();
+  const texteNettoye = (text || "{}").replace(/```json|```/g, "").trim();
   return JSON.parse(texteNettoye);
 }
 
@@ -96,10 +88,15 @@ async function analyserUneDevise(devise, historiqueDevise, vueMacro) {
   analyse.devise = devise;
   const classification = classifierCOT(analyse);
 
-  let narratif = { note: "Clé ANTHROPIC_API_KEY non configurée — narratif non généré, classification disponible" };
-  if (process.env.ANTHROPIC_API_KEY) {
+  let narratif;
+  try {
     const prompt = construirePrompt(classification, vueMacro);
-    narratif = await appellerAnthropic(prompt);
+    narratif = await appellerModele(prompt);
+  } catch (err) {
+    console.error(`[cot/analyse] échec narratif ${devise} :`, err.message);
+    narratif = {
+      note: `Narratif non généré (${err.message}) — classification disponible`,
+    };
   }
 
   return { classification, narratif };
