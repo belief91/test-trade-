@@ -8,16 +8,26 @@
 // Ne touche PAS a lib/module-synthesis-service.js ni a son prompt de
 // production - systemes entierement separes, comme convenu.
 //
-// FIX : l'appel IA passe maintenant par Vercel AI Gateway (comme le reste
-// du projet) au lieu de api.anthropic.com + ANTHROPIC_API_KEY, qui
-// renvoyait 401 invalid x-api-key. En local, il faut AI_GATEWAY_API_KEY
-// dans .env.local.
+// FIX : l'appel IA passe par Vercel AI Gateway (comme le reste du projet)
+// au lieu de api.anthropic.com + ANTHROPIC_API_KEY, qui renvoyait
+// 401 invalid x-api-key. En local, il faut AI_GATEWAY_API_KEY dans
+// .env.local.
+//
+// FIX (29/09) : anthropic/claude-sonnet-5 est reserve aux comptes avec
+// credits payants sur AI Gateway (403 "Free tier users do not have
+// access to this model"). Ce script de TEST uniquement bascule sur
+// stepfun/step-3.7-flash, disponible avec le quota gratuit de 5$.
+// Qualite d'analyse nettement inferieure a Sonnet (index d'intelligence
+// ~30-40 contre Sonnet) - NE PAS reporter ce changement sur
+// module-synthesis-service.js, fusion-service ou les routes de
+// production (cot/analyse, bond-yields/synthesis), qui restent sur
+// Sonnet.
 //
 // Usage : node scripts/test-bc-state-fed.js
 
 import fs from "fs";
 
-const MODELE = "anthropic/claude-sonnet-5";
+const MODELE = "stepfun/step-3.7-flash";
 
 async function executer() {
   const dotenv = await import("dotenv");
@@ -38,7 +48,7 @@ async function executer() {
   console.log(`Documents nouveaux : ${paquet.newDocuments.length}`);
   console.log(`Etat precedent present : ${paquet.previousState ? "oui" : "non (premiere analyse)"}`);
 
-  console.log("\n=== Etape 2 : appel IA (Vercel AI Gateway) ===");
+  console.log(`\n=== Etape 2 : appel IA (Vercel AI Gateway, ${MODELE}) ===`);
   if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN) {
     throw new Error(
       "AI_GATEWAY_API_KEY absente de .env.local (cle Vercel AI Gateway : dashboard > AI Gateway > API Keys)."
