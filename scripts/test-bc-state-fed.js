@@ -8,20 +8,19 @@
 // Ne touche PAS a lib/module-synthesis-service.js ni a son prompt de
 // production - systemes entierement separes, comme convenu.
 //
-// FIX : l'appel IA passe par Vercel AI Gateway (comme le reste du projet)
-// au lieu de api.anthropic.com + ANTHROPIC_API_KEY, qui renvoyait
-// 401 invalid x-api-key. En local, il faut AI_GATEWAY_API_KEY dans
-// .env.local.
+// FIX (30/09) : bc_state s'est retrouve avec AUCUN champ IA
+// (biais/conviction/cap/etc totalement absents), sans la moindre
+// erreur visible. Cause : `(texteBrut || "{}")` masquait silencieusement
+// une reponse vide du modele - JSON.parse("{}") reussit sans jamais
+// declencher le catch. Confirme par l'utilisateur sur 2 executions
+// identiques. Cause probable : step-3.7-flash est un modele avec
+// raisonnement interne, qui peut consommer tout maxOutputTokens en
+// reflexion avant d'emettre la reponse finale - 1200 etait trop juste.
 //
-// FIX (29/09) : anthropic/claude-sonnet-5 est reserve aux comptes avec
-// credits payants sur AI Gateway (403 "Free tier users do not have
-// access to this model"). Ce script de TEST uniquement bascule sur
-// stepfun/step-3.7-flash, disponible avec le quota gratuit de 5$.
-// Qualite d'analyse nettement inferieure a Sonnet (index d'intelligence
-// ~30-40 contre Sonnet) - NE PAS reporter ce changement sur
-// module-synthesis-service.js, fusion-service ou les routes de
-// production (cot/analyse, bond-yields/synthesis), qui restent sur
-// Sonnet.
+// Fix applique : maxOutputTokens releve a 4000, log explicite de la
+// longueur et d'un apercu de la reponse brute AVANT tout parsing, et
+// echec bruyant (throw) si la reponse est vide - plus de fallback
+// silencieux vers "{}".
 //
 // Usage : node scripts/test-bc-state-fed.js
 
@@ -55,7 +54,6 @@ async function executer() {
     );
   }
 
-  // Import apres dotenv.config() pour que la cle soit deja chargee
   const { generateText } = await import("ai");
   const promptSysteme = fs.readFileSync("prompts/test-bc-state-fed.txt", "utf-8");
 
@@ -63,21 +61,41 @@ async function executer() {
     model: MODELE,
     system: promptSysteme,
     prompt: JSON.stringify(paquet, null, 2),
-    maxOutputTokens: 1200,
+    maxOutputTokens: 4000, // releve de 1200 - un modele a raisonnement peut consommer le budget avant de repondre
   });
 
-  const texteNettoye = (texteBrut || "{}").replace(/```json|```/g, "").trim();
+  // FIX (30/09) : log explicite AVANT tout parsing, pour voir exactement
+  // ce que le modele a renvoye - plus jamais de bug invisible comme celui-ci
+  console.log(`Longueur de la reponse brute : ${texteBrut ? texteBrut.length : 0} caracteres`);
+  console.log("Apercu (300 premiers caracteres) :");
+  console.log(texteBrut ? texteBrut.slice(0, 300) : "(VIDE)");
+
+  if (!texteBrut || texteBrut.trim().length === 0) {
+    throw new Error(
+      `Le modele ${MODELE} a renvoye une reponse vide. Causes possibles : maxOutputTokens insuffisant pour un modele a raisonnement, ou refus silencieux du modele. Reponse brute complete : "${texteBrut}"`
+    );
+  }
+
+  const texteNettoye = texteBrut.replace(/```json|```/g, "").trim();
 
   let resultatIA;
   try {
     resultatIA = JSON.parse(texteNettoye);
   } catch (err) {
-    console.error("Echec du parsing JSON. Reponse brute recue :");
+    console.error("Echec du parsing JSON. Reponse brute complete recue :");
     console.error(texteBrut);
     throw err;
   }
 
-  console.log("Reponse IA parsee avec succes :");
+  // FIX (30/09) : verification que l'objet parse n'est pas vide non plus
+  // (un JSON valide mais vide {} passerait le JSON.parse sans erreur)
+  if (Object.keys(resultatIA).length === 0) {
+    throw new Error(
+      `Le modele a renvoye un JSON valide mais VIDE ({}). Reponse brute complete : "${texteBrut}"`
+    );
+  }
+
+  console.log("\nReponse IA parsee avec succes :");
   console.log(JSON.stringify(resultatIA, null, 2));
 
   console.log("\n=== Etape 3 : ecriture bc_state ===");
@@ -96,9 +114,6 @@ async function executer() {
   console.log(JSON.stringify(relu, null, 2));
 }
 
-// FIX : process.exit() force pendant que des handles reseau se ferment
-// provoquait "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" sous
-// Windows. process.exitCode laisse Node se terminer proprement.
 executer()
   .then(() => {
     process.exitCode = 0;
