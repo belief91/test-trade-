@@ -182,5 +182,9 @@ jobs:
     steps:
       - name: Archiver le mois précédent (raw/ -> archives/)
         run: |
-          curl -sf --max-time 90 https://test-trade-eosin.vercel.app/api/maintenance/archiver-mois-precedent \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+          for i in $(seq 1 8); do
+            R=$(curl -sf --max-time 90 https://test-trade-eosin.vercel.app/api/maintenance/archiver-mois-precedent \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+            echo "$R"
+            echo "$R" | grep -q '"status":"partiel"' || break
+          done
