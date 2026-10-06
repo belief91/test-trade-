@@ -49,6 +49,10 @@ on:
     # c'est le dernier jour du mois et s'arrête sinon (GitHub Actions ne
     # sait pas planifier "dernier jour du mois" nativement).
     - cron: "50 20 * * *"
+    # Archivage mensuel R2 (raw/ -> archives/{mois annee}/) : 21h10 UTC
+    # les 1, 2 et 3 du mois = 00h10 GMT+3 les 2, 3 et 4 (3 tentatives,
+    # la route est idempotente et reprend là où elle s'est arrêtée).
+    - cron: "10 21 1,2,3 * *"
   workflow_dispatch: {}
 
 jobs:
@@ -170,4 +174,13 @@ jobs:
       - name: Reset mensuel Journal (23h50 GMT+3, s'auto-annule hors fin de mois)
         run: |
           curl -sf https://test-trade-eosin.vercel.app/api/cron/journal-reset-mensuel \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+  archivage-mensuel:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '10 21 1,2,3 * *'
+    steps:
+      - name: Archiver le mois précédent (raw/ -> archives/)
+        run: |
+          curl -sf --max-time 90 https://test-trade-eosin.vercel.app/api/maintenance/archiver-mois-precedent \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
