@@ -12,15 +12,18 @@
 // (biais/conviction/cap/etc totalement absents), sans la moindre
 // erreur visible. Cause : `(texteBrut || "{}")` masquait silencieusement
 // une reponse vide du modele - JSON.parse("{}") reussit sans jamais
-// declencher le catch. Confirme par l'utilisateur sur 2 executions
-// identiques. Cause probable : step-3.7-flash est un modele avec
-// raisonnement interne, qui peut consommer tout maxOutputTokens en
-// reflexion avant d'emettre la reponse finale - 1200 etait trop juste.
+// declencher le catch. Fix : echec bruyant si reponse vide ou JSON vide.
 //
-// Fix applique : maxOutputTokens releve a 4000, log explicite de la
-// longueur et d'un apercu de la reponse brute AVANT tout parsing, et
-// echec bruyant (throw) si la reponse est vide - plus de fallback
-// silencieux vers "{}".
+// FIX (09/10) : avec un paquet plus gros (une dizaine de discours),
+// la reponse est arrivee TRONQUEE en plein milieu d'une chaine
+// (1405 caracteres, "Unterminated string in JSON") alors que la limite
+// de 4000 tokens etait loin d'etre atteinte par le texte visible. Cause :
+// step-3.7-flash est un modele a raisonnement interne dont les tokens de
+// reflexion comptent dans maxOutputTokens - il n'est reste qu'une
+// centaine de tokens pour ecrire le JSON. Fix : maxOutputTokens releve a
+// 12000, paquet envoye en JSON compact, logs de finishReason / usage /
+// taille du paquet, et echec explicite si finishReason === "length"
+// (jamais de parsing d'un JSON incomplet).
 //
 // Usage : node scripts/test-bc-state-fed.js
 
@@ -57,15 +60,28 @@ async function executer() {
   const { generateText } = await import("ai");
   const promptSysteme = fs.readFileSync("prompts/test-bc-state-fed.txt", "utf-8");
 
-  const { text: texteBrut } = await generateText({
+  // JSON compact : moins de tokens en entree qu'avec l'indentation
+  const promptUtilisateur = JSON.stringify(paquet);
+  console.log(`Taille du paquet envoye : ${promptUtilisateur.length} caracteres`);
+
+  const { text: texteBrut, finishReason, usage } = await generateText({
     model: MODELE,
     system: promptSysteme,
-    prompt: JSON.stringify(paquet, null, 2),
-    maxOutputTokens: 4000, // releve de 1200 - un modele a raisonnement peut consommer le budget avant de repondre
+    prompt: promptUtilisateur,
+    maxOutputTokens: 12000, // un modele a raisonnement depense une grande part du budget en reflexion avant d'ecrire
   });
 
-  // FIX (30/09) : log explicite AVANT tout parsing, pour voir exactement
-  // ce que le modele a renvoye - plus jamais de bug invisible comme celui-ci
+  console.log(`finishReason : ${finishReason}`);
+  console.log(`usage : ${JSON.stringify(usage)}`);
+
+  // Reponse coupee par la limite de tokens : on echoue explicitement,
+  // sans tenter de parser un JSON incomplet
+  if (finishReason === "length") {
+    throw new Error(
+      `Reponse tronquee par la limite de tokens (finishReason=length) apres ${texteBrut ? texteBrut.length : 0} caracteres. Relever maxOutputTokens ou reduire la taille du paquet.`
+    );
+  }
+
   console.log(`Longueur de la reponse brute : ${texteBrut ? texteBrut.length : 0} caracteres`);
   console.log("Apercu (300 premiers caracteres) :");
   console.log(texteBrut ? texteBrut.slice(0, 300) : "(VIDE)");
@@ -87,8 +103,7 @@ async function executer() {
     throw err;
   }
 
-  // FIX (30/09) : verification que l'objet parse n'est pas vide non plus
-  // (un JSON valide mais vide {} passerait le JSON.parse sans erreur)
+  // Un JSON valide mais vide {} passerait JSON.parse sans erreur
   if (Object.keys(resultatIA).length === 0) {
     throw new Error(
       `Le modele a renvoye un JSON valide mais VIDE ({}). Reponse brute complete : "${texteBrut}"`
