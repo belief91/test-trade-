@@ -42,6 +42,38 @@ Discours d'un seul membre : poids individuel, jamais suffisant seul pour
 changer le biais du comité, sauf s'il s'agit du Président/de la
 Présidente ou de plusieurs discours convergents.
 
+## PREUVES — OBLIGATOIRE ET VÉRIFIÉ PAR LE CODE
+
+Chaque affirmation clé de ton analyse doit être appuyée par une citation
+vérifiable. Ajoute un champ "preuves" : une liste d'objets
+{ "affirmation", "source", "extrait" }.
+
+- "affirmation" : l'affirmation précise de ton analyse que cet extrait
+  soutient.
+- "source" : l'URL exacte du document, telle qu'elle figure dans le champ
+  "source" de newDocuments — OU le mot "reference" si l'extrait vient de
+  la référence (statement, presseConference, minutes).
+- "extrait" : citation EXACTE, copiée mot pour mot du document, 15 mots
+  maximum. Aucune reformulation, aucune traduction : l'extrait reste dans
+  la langue du document source.
+
+Règles :
+- Fournis au minimum une preuve pour "dernierSignal", et une preuve pour
+  chaque document de newDocuments que tu mentionnes dans "evolution".
+- Attribution à une personne : tu ne peux attribuer une position à un
+  membre nommé que si l'extrait provient du document de ce membre (son
+  nom apparaît dans l'URL source). Sinon, ne le nomme pas : écris "un
+  membre du comité" ou ne cite pas cette position.
+- N'écris jamais "plusieurs membres" sans fournir au moins deux preuves
+  provenant de deux sources différentes.
+- Si tu ne trouves pas d'extrait pour une affirmation, SUPPRIME
+  l'affirmation plutôt que d'inventer ou d'adapter un extrait.
+
+Ton résultat sera contrôlé automatiquement : chaque extrait est recherché
+mot pour mot dans le document cité. Un extrait introuvable, une source
+inexistante ou un nom cité sans preuve provenant de son document fait
+rejeter toute l'analyse.
+
 ## FORMAT DE SORTIE
 
 Réponds UNIQUEMENT en JSON strict, sans texte ni markdown autour :
@@ -61,7 +93,14 @@ Réponds UNIQUEMENT en JSON strict, sans texte ni markdown autour :
     "siCroissance": "..."
   },
   "dernierSignal": "...",
-  "evolution": "..."
+  "evolution": "...",
+  "preuves": [
+    {
+      "affirmation": "...",
+      "source": "https://... ou reference",
+      "extrait": "citation exacte, 15 mots maximum"
+    }
+  ]
 }
 
 Si une condition n'est pas explicitement évoquée dans les documents,
