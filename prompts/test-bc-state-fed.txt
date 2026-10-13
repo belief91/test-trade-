@@ -54,18 +54,27 @@ vérifiable. Ajoute un champ "preuves" : une liste d'objets
   "source" de newDocuments — OU le mot "reference" si l'extrait vient de
   la référence (statement, presseConference, minutes).
 - "extrait" : citation EXACTE, copiée mot pour mot du document, 15 mots
-  maximum. Aucune reformulation, aucune traduction : l'extrait reste dans
-  la langue du document source.
+  maximum, au moins 5 mots. Aucune reformulation, aucune traduction :
+  l'extrait reste dans la langue du document source. Si tu coupes une
+  phrase en son milieu, copie le fragment tel quel, sans ajouter de
+  ponctuation finale.
 
 Règles :
 - Fournis au minimum une preuve pour "dernierSignal", et une preuve pour
   chaque document de newDocuments que tu mentionnes dans "evolution".
-- Attribution à une personne : tu ne peux attribuer une position à un
-  membre nommé que si l'extrait provient du document de ce membre (son
-  nom apparaît dans l'URL source). Sinon, ne le nomme pas : écris "un
-  membre du comité" ou ne cite pas cette position.
-- N'écris jamais "plusieurs membres" sans fournir au moins deux preuves
-  provenant de deux sources différentes.
+- L'URL citée doit être celle du document qui contient réellement
+  l'extrait : une phrase qui n'est pas dans CE document ne peut pas lui
+  être attribuée, même si elle est exacte ailleurs.
+- Attribution à une personne : tu ne peux nommer un membre que si ton
+  analyse s'appuie sur une preuve tirée de SON propre document (son nom
+  apparaît dans l'URL source). Chaque membre nommé = au moins une preuve
+  issue de son document.
+- Ne nomme JAMAIS un membre pour dire que son document est hors sujet ou
+  sans impact sur la politique monétaire : désigne ce document par son
+  thème (par exemple « un discours sur la supervision bancaire »), sans
+  citer le nom.
+- N'écris jamais "plusieurs membres" ou "la majorité" sans fournir au
+  moins deux preuves provenant de deux sources différentes.
 - Si tu ne trouves pas d'extrait pour une affirmation, SUPPRIME
   l'affirmation plutôt que d'inventer ou d'adapter un extrait.
 
@@ -98,7 +107,7 @@ Réponds UNIQUEMENT en JSON strict, sans texte ni markdown autour :
     {
       "affirmation": "...",
       "source": "https://... ou reference",
-      "extrait": "citation exacte, 15 mots maximum"
+      "extrait": "citation exacte, entre 5 et 15 mots"
     }
   ]
 }
