@@ -16,12 +16,10 @@
 //   reflexion comptent dans maxOutputTokens) -> maxOutputTokens 12000,
 //   detection de finishReason === "length", logs usage / taille paquet.
 // - 12/10 : VERIFICATION DES PREUVES. Constat sur le premier cycle
-//   confirme/infirme reel : l'IA attribuait a Waller des "hausses
-//   supplementaires probables" absentes de son discours (10 phrases, rien
-//   sur les taux), surestimait "plusieurs membres" (un seul le disait) et
+//   confirme/infirme reel : l'IA surestimait "plusieurs membres" et
 //   annoncait "aucun signal contraire" malgre la nuance de Cook sur
-//   l'emploi. Le prompt exige desormais un champ `preuves`
-//   ({affirmation, source, extrait}) et ce script verifie :
+//   l'emploi. Le prompt exige un champ `preuves` ({affirmation, source,
+//   extrait}) et ce script verifie :
 //     1. chaque extrait existe MOT POUR MOT dans le document cite
 //     2. chaque source citee existe dans newDocuments (ou "reference")
 //     3. tout membre nomme dans l'analyse est etaye par une preuve
@@ -32,7 +30,14 @@
 //   qu'une corruption silencieuse). --forcer ecrit malgre tout, en
 //   marquant l'etat comme non verifie.
 //   LIMITE ASSUMEE : ce controle detecte les citations inventees ou
-//   mal attribuees, PAS les omissions (ex: une nuance ignoree).
+//   mal attribuees, PAS les omissions (ex: une nuance ignoree), ni les
+//   affirmations d'ensemble sans preuve ("la majorite du FOMC...").
+// - 13/10 : FAUX NEGATIF corrige. Une citation coupee en milieu de
+//   phrase par l'IA, avec un point final ajoute, etait rejetee alors
+//   que le fragment existait mot pour mot dans le document cite
+//   (Jefferson, 1er octobre). La ponctuation finale est desormais
+//   ignoree a la comparaison. Garde-fou associe : un extrait de moins
+//   de 5 mots est rejete (trop court pour prouver quoi que ce soit).
 //
 // Usage : node scripts/test-bc-state-fed.js [--forcer]
 
@@ -40,6 +45,8 @@ import fs from "fs";
 
 const MODELE = "stepfun/step-3.7-flash";
 const FORCER = process.argv.includes("--forcer");
+const MIN_MOTS_EXTRAIT = 5;
+const MAX_MOTS_EXTRAIT = 15;
 
 // ─────────────────────────────────────────────────────────────
 // Verification des preuves
@@ -56,12 +63,18 @@ function normaliser(texte) {
     .trim();
 }
 
+// Retire guillemets/espaces en tete, et guillemets/ponctuation/points de
+// suspension en queue : une citation coupee en milieu de phrase recoit
+// souvent un point final que le texte source n'a pas.
 function nettoyerExtrait(extrait) {
   return normaliser(extrait)
-    .replace(/^["'\s]+/, "")
-    .replace(/["'\s]+$/, "")
-    .replace(/(\.\.\.|\u2026)+$/, "")
+    .replace(/^[\s"']+/, "")
+    .replace(/[\s"'.,;:!?\u2026]+$/, "")
     .trim();
+}
+
+function compterMots(texte) {
+  return texte.split(/\s+/).filter(Boolean).length;
 }
 
 function construireCorpus(paquet) {
@@ -112,6 +125,15 @@ function verifierPreuves(resultatIA, paquet) {
       continue;
     }
 
+    const nbMots = compterMots(extrait);
+    if (nbMots < MIN_MOTS_EXTRAIT) {
+      echecs.push({
+        ...resume,
+        raison: `extrait trop court (${nbMots} mot(s), minimum ${MIN_MOTS_EXTRAIT}) : un fragment aussi bref ne prouve rien`,
+      });
+      continue;
+    }
+
     let texteCible;
     if (source.toLowerCase() === "reference") {
       texteCible = corpus.reference;
@@ -134,9 +156,8 @@ function verifierPreuves(resultatIA, paquet) {
       continue;
     }
 
-    const nbMots = extrait.split(/\s+/).filter(Boolean).length;
-    if (nbMots > 15) {
-      avertissements.push(`extrait de ${nbMots} mots (> 15) : "${extrait.slice(0, 60)}..."`);
+    if (nbMots > MAX_MOTS_EXTRAIT) {
+      avertissements.push(`extrait de ${nbMots} mots (> ${MAX_MOTS_EXTRAIT}) : "${extrait.slice(0, 60)}..."`);
     }
 
     preuvesVerifiees.push({ source, extrait });
