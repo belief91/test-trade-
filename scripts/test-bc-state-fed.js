@@ -15,29 +15,30 @@
 // - 09/10 : reponse tronquee (modele a raisonnement dont les tokens de
 //   reflexion comptent dans maxOutputTokens) -> maxOutputTokens 12000,
 //   detection de finishReason === "length", logs usage / taille paquet.
-// - 12/10 : VERIFICATION DES PREUVES. Constat sur le premier cycle
-//   confirme/infirme reel : l'IA surestimait "plusieurs membres" et
-//   annoncait "aucun signal contraire" malgre la nuance de Cook sur
-//   l'emploi. Le prompt exige un champ `preuves` ({affirmation, source,
-//   extrait}) et ce script verifie :
+// - 12/10 : VERIFICATION DES PREUVES. Le prompt exige un champ `preuves`
+//   ({affirmation, source, extrait}) et ce script verifie :
 //     1. chaque extrait existe MOT POUR MOT dans le document cite
 //     2. chaque source citee existe dans newDocuments (ou "reference")
 //     3. tout membre nomme dans l'analyse est etaye par une preuve
 //        verifiee provenant de SON discours (nom present dans l'URL)
 //   Si une verification echoue, bc_state n'est PAS ecrit : un etat non
 //   verifie servirait de previousState et de keySignals au cycle
-//   suivant et contaminerait l'historique (un echec visible vaut mieux
-//   qu'une corruption silencieuse). --forcer ecrit malgre tout, en
-//   marquant l'etat comme non verifie.
-//   LIMITE ASSUMEE : ce controle detecte les citations inventees ou
+//   suivant et contaminerait l'historique. --forcer ecrit malgre tout,
+//   en marquant l'etat comme non verifie.
+//   LIMITES ASSUMEES : ce controle detecte les citations inventees ou
 //   mal attribuees, PAS les omissions (ex: une nuance ignoree), ni les
-//   affirmations d'ensemble sans preuve ("la majorite du FOMC...").
-// - 13/10 : FAUX NEGATIF corrige. Une citation coupee en milieu de
-//   phrase par l'IA, avec un point final ajoute, etait rejetee alors
-//   que le fragment existait mot pour mot dans le document cite
-//   (Jefferson, 1er octobre). La ponctuation finale est desormais
-//   ignoree a la comparaison. Garde-fou associe : un extrait de moins
-//   de 5 mots est rejete (trop court pour prouver quoi que ce soit).
+//   affirmations qui depassent leur citation ("tous", "plusieurs",
+//   "sans reserve", "maintenu" appuye par une citation de hausse).
+// - 13/10 : FAUX NEGATIF corrige. La ponctuation finale d'un extrait
+//   est ignoree a la comparaison ; un extrait de moins de 5 mots est
+//   rejete (trop court pour prouver quoi que ce soit).
+// - 14/10 : SUIVI DES DOCUMENTS ANALYSES. Le paquet renvoyait a l'IA les
+//   memes 11 documents a chaque execution. bc_state memorise maintenant
+//   `documentsAnalyses` (hashes) ; le paquet les exclut tant que la
+//   reference ne change pas. Le bloc `meta` du paquet est retire avant
+//   l'envoi a l'IA. Les hashes ne sont enregistres que si TOUTES les
+//   preuves sont verifiees : un etat force (--forcer) ne marque aucun
+//   document comme analyse, ils seront donc revus au passage suivant.
 //
 // Usage : node scripts/test-bc-state-fed.js [--forcer]
 
@@ -202,15 +203,22 @@ async function executer() {
   const { mettreAJourBcState, lireBcState } = await import("../lib/bc-state/bc-state.js");
 
   console.log("=== Etape 1 : assemblage du paquet ===");
-  const paquet = await construireBcDailyPackage("Fed");
+  const paquetComplet = await construireBcDailyPackage("Fed");
 
-  if (!paquet) {
-    console.log("Aucun nouveau document depuis la derniere analyse - rien a faire (comportement normal).");
+  if (!paquetComplet) {
+    console.log(
+      "Aucun document a analyser (meme reference, tous les documents posterieurs ont deja ete analyses) - IA non appelee, rien a faire (comportement normal)."
+    );
     return;
   }
 
+  // Le bloc meta est technique : il ne doit jamais partir vers l'IA
+  const { meta, ...paquet } = paquetComplet;
+
   console.log(`Reference date : ${paquet.referenceDateUtilisee}`);
-  console.log(`Documents nouveaux : ${paquet.newDocuments.length}`);
+  console.log(`Reference nouvelle (statement different du dernier etat) : ${meta.referenceEstNouvelle ? "oui" : "non"}`);
+  console.log(`Documents a analyser (jamais analyses) : ${paquet.newDocuments.length}`);
+  console.log(`Documents deja analyses, ignores : ${meta.nbDejaAnalyses}`);
   console.log(`Etat precedent present : ${paquet.previousState ? "oui" : "non (premiere analyse)"}`);
 
   console.log(`\n=== Etape 2 : appel IA (Vercel AI Gateway, ${MODELE}) ===`);
@@ -292,17 +300,26 @@ async function executer() {
         `Verification des preuves echouee (${verification.echecs.length} echec(s)) - bc_state NON ecrit, pour ne pas contaminer le cycle suivant avec un etat non verifie. Relancer, ou utiliser --forcer pour ecrire malgre tout.`
       );
     }
-    console.log("\n--forcer actif : bc_state sera ecrit, marque comme NON verifie.");
+    console.log("\n--forcer actif : bc_state sera ecrit, marque comme NON verifie, et AUCUN document ne sera marque comme analyse.");
   } else {
     console.log("Toutes les preuves sont verifiees.");
   }
 
   console.log("\n=== Etape 3 : ecriture bc_state ===");
+
+  // Les documents ne sont marques "analyses" que si l'analyse est
+  // entierement verifiee ; sinon ils seront revus au passage suivant
+  const analyseVerifiee = verification.echecs.length === 0;
+  const documentsAnalyses = analyseVerifiee
+    ? [...new Set([...meta.documentsAnalysesCumul, ...meta.hashesNouveauxDocuments])]
+    : meta.documentsAnalysesCumul;
+
   const nouvelEtat = {
     devise: "USD",
     dateAnalyse: new Date().toISOString().split("T")[0],
     ...resultatIA,
     referenceDateUtilisee: paquet.referenceDateUtilisee,
+    documentsAnalyses,
     verificationPreuves: {
       total: verification.total,
       verifiees: verification.verifiees,
@@ -313,6 +330,7 @@ async function executer() {
 
   const etatEcrit = await mettreAJourBcState("Fed", nouvelEtat);
   console.log(`bc_state ecrit avec succes. updatedAt : ${etatEcrit.updatedAt}`);
+  console.log(`Documents marques comme analyses : ${documentsAnalyses.length}`);
 
   console.log("\n=== Verification : relecture de bc_state ===");
   const relu = await lireBcState("Fed");
