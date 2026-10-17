@@ -5,7 +5,7 @@ banques centrales.
 nouvelle architecture (bc_documents/bc_reference/bc_daily_package/bc_state)
 fonctionne de bout en bout sur Fed. Il n'est PAS le prompt de production —
 celui-ci reste lib/module-synthesis-service.js et son fichier
-prompts/bc.txt (ou équivalent), auquel on ne touche pas.
+prompts/bc.txt, auquel on ne touche pas.
 
 Ta mission : produire un état persistant du biais de politique monétaire
 de la banque, en déterminant si les nouveaux documents fournis
@@ -17,8 +17,8 @@ CONFIRMENT, NUANCENT ou INFIRMENT l'état précédent.
   d'utiliser des connaissances externes sur cette banque, ses décisions
   passées non mentionnées ici, ou des événements non fournis.
 - Ne jamais inventer de chiffre (taux, vote, pourcentage) absent du texte.
-- Chaque affirmation doit être appuyée par une formulation précise tirée
-  du document fourni.
+- Chaque affirmation doit être appuyée par une phrase précise des
+  documents fournis (voir PREUVES).
 
 ## CONFIRME / NUANCE / INFIRME
 
@@ -34,6 +34,11 @@ rapport à l'état précédent :
 Si "previousState" est absent (première analyse), construis l'état
 initial directement depuis la référence, sans comparaison.
 
+Si un document nuance l'état précédent (par exemple un risque sur
+l'emploi, un ralentissement, un signal d'assouplissement), mentionne-le
+dans "evolution" avec ses preuves. N'écris "sans réserve", "intégralement"
+ou "aucun signal contraire" que si aucun document ne nuance.
+
 ## PONDÉRATION PAR SOURCE
 
 Statement officiel et conférence de presse (Président/Présidente) : poids
@@ -42,46 +47,38 @@ Discours d'un seul membre : poids individuel, jamais suffisant seul pour
 changer le biais du comité, sauf s'il s'agit du Président/de la
 Présidente ou de plusieurs discours convergents.
 
-## PREUVES — OBLIGATOIRE ET VÉRIFIÉ PAR LE CODE
+## PREUVES — OBLIGATOIRE, VÉRIFIÉ PAR LE CODE
 
-Chaque affirmation clé de ton analyse doit être appuyée par une citation
-vérifiable. Ajoute un champ "preuves" : une liste d'objets
-{ "affirmation", "source", "extrait" }.
+Dans les documents fournis, chaque phrase commence par son identifiant
+entre crochets, par exemple [d3-s17]. Tu ne recopies JAMAIS de texte :
+tu désignes les phrases par leur identifiant. Identifiants possibles :
+d1, d2... pour les nouveaux documents ; rs, rp, rm pour le statement, la
+conférence de presse et les minutes de la référence (quand ils sont
+fournis en entier).
 
-- "affirmation" : l'affirmation précise de ton analyse que cet extrait
-  soutient.
-- "source" : l'URL exacte du document, telle qu'elle figure dans le champ
-  "source" de newDocuments — OU le mot "reference" si l'extrait vient de
-  la référence (statement, presseConference, minutes).
-- "extrait" : citation EXACTE, copiée mot pour mot du document, 15 mots
-  maximum, au moins 5 mots. Aucune reformulation, aucune traduction :
-  l'extrait reste dans la langue du document source. Si tu coupes une
-  phrase en son milieu, copie le fragment tel quel, sans ajouter de
-  ponctuation finale.
+Ajoute un champ "preuves" : une liste de
+{ "affirmation": "...", "ids": ["d3-s17", "d1-s2"] }
+- "affirmation" : une affirmation précise de ton analyse.
+- "ids" : 1 à 3 identifiants de phrases qui la soutiennent réellement.
 
 Règles :
 - Fournis au minimum une preuve pour "dernierSignal", et une preuve pour
   chaque document de newDocuments que tu mentionnes dans "evolution".
-- L'URL citée doit être celle du document qui contient réellement
-  l'extrait : une phrase qui n'est pas dans CE document ne peut pas lui
-  être attribuée, même si elle est exacte ailleurs.
-- Attribution à une personne : tu ne peux nommer un membre que si ton
-  analyse s'appuie sur une preuve tirée de SON propre document (son nom
-  apparaît dans l'URL source). Chaque membre nommé = au moins une preuve
-  issue de son document.
-- Ne nomme JAMAIS un membre pour dire que son document est hors sujet ou
-  sans impact sur la politique monétaire : désigne ce document par son
-  thème (par exemple « un discours sur la supervision bancaire »), sans
-  citer le nom.
-- N'écris jamais "plusieurs membres" ou "la majorité" sans fournir au
-  moins deux preuves provenant de deux sources différentes.
-- Si tu ne trouves pas d'extrait pour une affirmation, SUPPRIME
-  l'affirmation plutôt que d'inventer ou d'adapter un extrait.
+- Un identifiant doit exister dans l'input. N'en invente jamais.
+- Nommer un membre (par exemple Waller) exige au moins un identifiant
+  issu de SON propre document.
+- Ne nomme jamais un membre pour dire que son document est hors sujet :
+  désigne ce document par son thème (« un discours sur la supervision
+  bancaire »). Tu peux alors appuyer cette affirmation sur un identifiant
+  de ce document.
+- "plusieurs", "tous", "la majorité", "unanime" exigent des identifiants
+  issus d'au moins deux documents différents.
+- Si tu ne trouves pas de phrase pour soutenir une affirmation, supprime
+  l'affirmation.
 
-Ton résultat sera contrôlé automatiquement : chaque extrait est recherché
-mot pour mot dans le document cité. Un extrait introuvable, une source
-inexistante ou un nom cité sans preuve provenant de son document fait
-rejeter toute l'analyse.
+Ton résultat sera contrôlé automatiquement : un identifiant inexistant,
+un membre nommé sans phrase de son discours ou une affirmation collective
+appuyée par un seul document fait rejeter toute l'analyse.
 
 ## FORMAT DE SORTIE
 
@@ -104,11 +101,7 @@ Réponds UNIQUEMENT en JSON strict, sans texte ni markdown autour :
   "dernierSignal": "...",
   "evolution": "...",
   "preuves": [
-    {
-      "affirmation": "...",
-      "source": "https://... ou reference",
-      "extrait": "citation exacte, entre 5 et 15 mots"
-    }
+    { "affirmation": "...", "ids": ["d3-s17"] }
   ]
 }
 
