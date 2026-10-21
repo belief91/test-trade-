@@ -13,12 +13,15 @@
 //   node scripts/test-bc-state-fed.js --forcer
 //       ecrit bc_state meme si une preuve echoue (etat marque non verifie,
 //       aucun document marque comme analyse)
-//   node scripts/test-bc-state-fed.js --modele=anthropic/claude-sonnet-5
-//       test ponctuel avec le modele de production
+//   node scripts/test-bc-state-fed.js --modele=anthropic/claude-sonnet-5 --refaire
+//       test ponctuel avec le modele de production. --refaire est necessaire
+//       si les documents ont deja ete analyses (sinon l'IA n'est pas appelee) :
+//       il renvoie tous les documents posterieurs a la reference vers l'IA.
 
 import dotenv from "dotenv";
 
 const FORCER = process.argv.includes("--forcer");
+const REFAIRE = process.argv.includes("--refaire");
 const argModele = process.argv.find((a) => a.startsWith("--modele="));
 
 async function executer() {
@@ -35,6 +38,7 @@ async function executer() {
   const resultat = await analyserBc("Fed", {
     modele: argModele ? argModele.split("=")[1] : MODELE_TEST_PAR_DEFAUT,
     forcer: FORCER,
+    refaire: REFAIRE,
     log: console.log,
   });
 
