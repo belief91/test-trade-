@@ -1,31 +1,31 @@
 // app/api/cron/bc-state/route.js
 //
-// Automatise l'etat BC : plus besoin de lancer les scripts a la main.
+// Automatise l'etat BC de PRODUCTION :
 //
-//   ingestion du flux -> bc_documents -> bc_reference -> analyse IA
-//   (seulement s'il y a un document jamais analyse) -> bc_state
+//   bc_documents (alimente par /api/cron/bc-flux) -> bc_reference ->
+//   analyse IA (seulement s'il y a un document jamais analyse) -> bc_state
 //
-// La logique d'analyse vit dans lib/bc-state/bc-analyse.js (partagee
-// avec le script manuel). Cette route ne fait qu'enchainer les etapes.
+// bc_state est ensuite lu par la synthese quotidienne (BC) via
+// lib/bc-state/bc-contexte.js. La logique d'analyse vit dans
+// lib/bc-state/bc-analyse.js (partagee avec scripts/test-bc-state-fed.js).
 //
-// PERIMETRE : Fed uniquement pour l'instant (prototype valide avant
-// generalisation). Pour la Fed, la source est le fichier du scraping
-// continu test/central-bank-fed.json (ecrit par app/api/test/central-bank-fed,
-// 4x/jour). Une banque de plus = une entree dans BANQUES, une fois son
-// flux de scraping continu en place.
+// PERIMETRE : Fed. Une banque de plus = une entree dans BANQUES, une fois son
+// flux (/api/cron/bc-flux) en place.
 //
 // Cout IA : l'IA n'est appelee que si bc_daily_package trouve au moins un
 // document jamais analyse (ou une nouvelle reference). Un passage sans
 // nouveaute ne coute que quelques lectures R2.
 //
-// Garde-fous : memes que la synthese quotidienne. SYNTHESE_SUSPENDUE=true
-// coupe l'appel IA (l'ingestion et la reference, gratuites, continuent).
-// Modele : BC_STATE_MODELE (variable Vercel optionnelle) ; par defaut le
-// modele de test economique. Passer a anthropic/claude-sonnet-5 = definir
-// cette variable, aucun code a changer.
+// Garde-fous : SYNTHESE_SUSPENDUE=true coupe l'appel IA (la reference,
+// gratuite, continue). Modele : BC_STATE_MODELE (variable Vercel
+// optionnelle) ; defaut stepfun/step-3.7-flash.
+//
+// ALERTE : HTTP 500 si une banque est en ERREUR technique (R2, Render, IA,
+// reponse invalide) - le job GitHub Actions echoue et GitHub previent par
+// e-mail. Un ECHEC_VERIFICATION (preuves rejetees) n'est pas une panne : 200,
+// l'analyse sera retentee au passage suivant.
 
 import { NextResponse } from "next/server";
-import { ingurgiterDepuisFichierTest } from "../../../../lib/bc-state/bc-documents";
 import { construireBcReference } from "../../../../lib/bc-state/bc-reference";
 import { analyserBc, MODELE_TEST_PAR_DEFAUT } from "../../../../lib/bc-state/bc-analyse";
 
@@ -47,16 +47,8 @@ export async function GET(request) {
 
   for (const banque of BANQUES) {
     try {
-      const ingestion = await ingurgiterDepuisFichierTest(banque);
       const reference = await construireBcReference(banque);
-
-      const rapport = {
-        ingestion: {
-          nouveauxDocuments: ingestion.nouveaux,
-          totalBcDocuments: ingestion.totalApresDedup,
-        },
-        referenceDate: reference.referenceDate,
-      };
+      const rapport = { referenceDate: reference.referenceDate };
 
       if (suspendu) {
         rapport.analyse = { statut: "SUSPENDU", raison: "SYNTHESE_SUSPENDUE=true" };
@@ -77,5 +69,10 @@ export async function GET(request) {
     }
   }
 
-  return NextResponse.json({ status: "ok", modele, resultats });
+  const enErreur = Object.values(resultats).some((r) => r.statut === "ERREUR");
+
+  return NextResponse.json(
+    { status: enErreur ? "erreur" : "ok", modele, resultats },
+    { status: enErreur ? 500 : 200 }
+  );
 }
