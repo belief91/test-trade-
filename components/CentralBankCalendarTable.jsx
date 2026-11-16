@@ -9,25 +9,41 @@ import { useState, useEffect, useCallback } from "react";
  * Le bouton appelle /api/central-bank-calendar (déclenchement manuel, pas
  * protégé par CRON_SECRET contrairement à /api/cron/scraping) qui relance
  * le scraping en direct et re-sauvegarde dans Back4App à chaque appel.
+ *
+ * FIX (16/11/2026) : si le scraping TradingEconomics est bloqué (CAPTCHA
+ * AWS WAF), la route répond 502 avec les événements de la semaine déjà
+ * archivés dans R2. On les affiche avec un bandeau d'avertissement au
+ * lieu d'un tableau vide trompeur.
  */
 export default function CentralBankCalendarTable() {
   const [evenements, setEvenements] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
+  const [avertissement, setAvertissement] = useState(null);
   const [derniereMiseAJour, setDerniereMiseAJour] = useState(null);
 
   const chargerDonnees = useCallback(async () => {
     setChargement(true);
     setErreur(null);
+    setAvertissement(null);
     try {
       const res = await fetch("/api/central-bank-calendar");
       const json = await res.json();
 
-      if (!json.success) {
+      if (json.success) {
+        setEvenements(json.data);
+      } else if (Array.isArray(json.data) && json.data.length > 0) {
+        // Scraping bloqué mais l'archive R2 contient la semaine en cours
+        setEvenements(json.data);
+        setAvertissement(
+          "Scraping TradingEconomics indisponible — affichage des données archivées (R2) pour cette semaine. " +
+            (json.error || "")
+        );
+      } else {
+        setEvenements([]);
         throw new Error(json.error || "Erreur inconnue lors du scraping");
       }
 
-      setEvenements(json.data);
       setDerniereMiseAJour(new Date());
     } catch (err) {
       setErreur(err.message);
@@ -70,8 +86,24 @@ export default function CentralBankCalendarTable() {
 
       {derniereMiseAJour && !chargement && (
         <p style={{ fontSize: "0.85rem", color: "#666", marginTop: 0 }}>
-          Dernière mise à jour : {derniereMiseAJour.toLocaleString("fr-FR")}
+          {avertissement ? "Dernière tentative" : "Dernière mise à jour"} :{" "}
+          {derniereMiseAJour.toLocaleString("fr-FR")}
         </p>
+      )}
+
+      {avertissement && (
+        <div
+          style={{
+            padding: "1rem",
+            backgroundColor: "#fff4e5",
+            color: "#8a4b00",
+            borderRadius: "6px",
+            marginBottom: "1rem",
+            fontSize: "0.9rem",
+          }}
+        >
+          ⚠️ {avertissement}
+        </div>
       )}
 
       {erreur && (
@@ -124,7 +156,7 @@ export default function CentralBankCalendarTable() {
               ))}
             </tbody>
           </table>
-          {evenements.length === 0 && !chargement && (
+          {evenements.length === 0 && !chargement && !erreur && (
             <p style={{ marginTop: "1rem", color: "#666" }}>
               Aucun événement trouvé pour cette semaine.
             </p>
