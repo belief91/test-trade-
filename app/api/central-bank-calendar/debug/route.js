@@ -3,7 +3,6 @@
 // A supprimer une fois le probleme du calendrier BC resolu.
 
 import { NextResponse } from "next/server";
-import * as cheerio from "cheerio";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -28,7 +27,7 @@ function cookieHeader(obj) {
     .join("; ");
 }
 
-function extraits(html, mot, n = 4, avant = 150, apres = 450) {
+function extraits(html, mot, n, avant, apres) {
   const res = [];
   let idx = 0;
   while (res.length < n) {
@@ -46,44 +45,37 @@ export async function GET(request) {
     headers: { "User-Agent": UA, Cookie: cookieHeader(COOKIES) },
   });
   const html = await res.text();
-  const $ = cheerio.load(html);
+
+  // Comment l'URL du partial est construite
+  const iTable = html.indexOf("window.TECalendarTable = (function");
+  const bloc = iTable > -1 ? html.slice(iTable, iTable + 4500).replace(/\s+/g, " ") : null;
 
   const motsCles = {};
-  [
-    "te-calendar-body",
-    "TEWaf.fetch(",
-    "$.ajax",
-    "$.get(",
-    "$.post(",
-    "$.getJSON",
-    "loadCalendar",
-    "calendar/",
-    "/token",
-    "x-amzn-waf",
-    "challenge.js",
-    "awswaf",
-    "/ajax",
-    "Loading",
-  ].forEach((m) => {
-    motsCles[m] = { occurrences: html.split(m).length - 1, extraits: extraits(html, m) };
+  ["X-TE-Partial", "partial", "url.searchParams", "new URL("].forEach((m) => {
+    motsCles[m] = {
+      occurrences: html.split(m).length - 1,
+      extraits: extraits(html, m, 3, 300, 500),
+    };
   });
 
-  // Appel d'un endpoint candidat fourni en parametre ?probe=/chemin
+  // Sonde : ?probe=/chemin?... avec en-tetes optionnels ?partial=1 (ajoute X-TE-Partial)
   let sonde = null;
   const probe = searchParams.get("probe");
   if (probe && probe.startsWith("/")) {
     try {
-      const r = await fetch("https://tradingeconomics.com" + probe, {
-        headers: { "User-Agent": UA, Cookie: cookieHeader(COOKIES) },
-      });
+      const headers = { "User-Agent": UA, Cookie: cookieHeader(COOKIES) };
+      const r = await fetch("https://tradingeconomics.com" + probe, { headers });
       const t = await r.text();
       sonde = {
         probe,
         status: r.status,
         wafAction: r.headers.get("x-amzn-waf-action"),
+        xTePartial: r.headers.get("x-te-partial"),
         contentType: r.headers.get("content-type"),
         longueur: t.length,
-        debut: t.slice(0, 600),
+        trCount: (t.match(/<tr/g) || []).length,
+        dataEvent: (t.match(/data-event=/g) || []).length,
+        debut: t.slice(0, 500),
       };
     } catch (e) {
       sonde = { probe, erreur: e.message };
@@ -92,8 +84,7 @@ export async function GET(request) {
 
   return NextResponse.json({
     horodatage: new Date().toISOString(),
-    calendarBodyHtml: $("#te-calendar-body").html()?.replace(/\s+/g, " ").slice(0, 1200),
-    calendarAreaHtml: $("#te-calendar-area").html()?.replace(/\s+/g, " ").slice(0, 600),
+    blocTECalendarTable: bloc,
     motsCles,
     sonde,
   });
