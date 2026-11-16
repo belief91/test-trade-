@@ -28,97 +28,73 @@ function cookieHeader(obj) {
     .join("; ");
 }
 
-function extraits(html, mot, n = 3, rayon = 250) {
+function extraits(html, mot, n = 4, avant = 150, apres = 450) {
   const res = [];
   let idx = 0;
   while (res.length < n) {
     idx = html.indexOf(mot, idx);
     if (idx === -1) break;
-    res.push(html.slice(Math.max(0, idx - rayon), idx + rayon).replace(/\s+/g, " "));
+    res.push(html.slice(Math.max(0, idx - avant), idx + apres).replace(/\s+/g, " "));
     idx += mot.length;
   }
   return res;
 }
 
-export async function GET() {
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
   const res = await fetch(CALENDAR_URL, {
     headers: { "User-Agent": UA, Cookie: cookieHeader(COOKIES) },
   });
   const html = await res.text();
   const $ = cheerio.load(html);
 
-  const classesCalendar = new Set();
-  $("[class]").each((_, el) => {
-    const c = ($(el).attr("class") || "").split(/\s+/);
-    c.forEach((x) => {
-      if (/calendar|event|econ/i.test(x)) classesCalendar.add(x);
-    });
-  });
-
-  const idsCalendar = [];
-  $("[id]").each((_, el) => {
-    const id = $(el).attr("id");
-    if (/calendar|event|econ/i.test(id)) idsCalendar.push(id);
-  });
-
-  const compteurs = {};
-  ["table", "tbody", "thead", "tr", "td", "li", "div", "script", "iframe"].forEach(
-    (t) => (compteurs[t] = $(t).length)
-  );
-
-  const scriptsSrc = $("script[src]")
-    .map((_, el) => $(el).attr("src"))
-    .get()
-    .slice(0, 40);
-
-  // Scripts inline volumineux (donnees embarquees ?)
-  const gros = $("script:not([src])")
-    .map((_, el) => {
-      const t = $(el).html() || "";
-      return t.length > 5000
-        ? { longueur: t.length, debut: t.slice(0, 200).replace(/\s+/g, " ") }
-        : null;
-    })
-    .get()
-    .filter(Boolean)
-    .slice(0, 10);
-
   const motsCles = {};
   [
-    "data-event",
-    "calendar-iso",
-    "calendar-item",
-    "Interest Rate Decision",
-    "Retail Sales",
-    "Nonfarm",
-    "__NEXT_DATA__",
-    "/ws/",
+    "te-calendar-body",
+    "TEWaf.fetch(",
+    "$.ajax",
+    "$.get(",
+    "$.post(",
+    "$.getJSON",
+    "loadCalendar",
     "calendar/",
-    "fetch(",
-    "XMLHttpRequest",
-    "calendar-range",
+    "/token",
+    "x-amzn-waf",
+    "challenge.js",
+    "awswaf",
+    "/ajax",
+    "Loading",
   ].forEach((m) => {
-    motsCles[m] = { occurrences: html.split(m).length - 1, extraits: extraits(html, m, 2) };
+    motsCles[m] = { occurrences: html.split(m).length - 1, extraits: extraits(html, m) };
   });
+
+  // Appel d'un endpoint candidat fourni en parametre ?probe=/chemin
+  let sonde = null;
+  const probe = searchParams.get("probe");
+  if (probe && probe.startsWith("/")) {
+    try {
+      const r = await fetch("https://tradingeconomics.com" + probe, {
+        headers: { "User-Agent": UA, Cookie: cookieHeader(COOKIES) },
+      });
+      const t = await r.text();
+      sonde = {
+        probe,
+        status: r.status,
+        wafAction: r.headers.get("x-amzn-waf-action"),
+        contentType: r.headers.get("content-type"),
+        longueur: t.length,
+        debut: t.slice(0, 600),
+      };
+    } catch (e) {
+      sonde = { probe, erreur: e.message };
+    }
+  }
 
   return NextResponse.json({
     horodatage: new Date().toISOString(),
-    status: res.status,
-    htmlLength: html.length,
-    compteurs,
-    classesCalendar: [...classesCalendar].slice(0, 60),
-    idsCalendar: idsCalendar.slice(0, 40),
-    scriptsSrc,
-    grosScriptsInline: gros,
+    calendarBodyHtml: $("#te-calendar-body").html()?.replace(/\s+/g, " ").slice(0, 1200),
+    calendarAreaHtml: $("#te-calendar-area").html()?.replace(/\s+/g, " ").slice(0, 600),
     motsCles,
-    corpsApresScripts: $("body")
-      .clone()
-      .find("script,style,noscript")
-      .remove()
-      .end()
-      .text()
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 1200),
+    sonde,
   });
 }
