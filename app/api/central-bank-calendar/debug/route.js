@@ -28,55 +28,97 @@ function cookieHeader(obj) {
     .join("; ");
 }
 
-async function sonder(label, headers) {
-  const out = { label };
-  try {
-    const res = await fetch(CALENDAR_URL, { headers, redirect: "follow" });
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const lower = html.toLowerCase();
-
-    out.status = res.status;
-    out.finalUrl = res.url;
-    out.contentType = res.headers.get("content-type");
-    out.server = res.headers.get("server");
-    out.cfRay = res.headers.get("cf-ray");
-    out.htmlLength = html.length;
-    out.title = $("title").first().text().trim();
-    out.trCount = $("tr").length;
-    out.dataEventCount = $("tr[data-event]").length;
-    out.calendarIsoCount = $("td.calendar-iso").length;
-    out.calendarItemCount = $("td.calendar-item").length;
-    out.marqueursBlocage = {
-      justAMoment: lower.includes("just a moment"),
-      cfChallenge: lower.includes("cf-chl") || lower.includes("challenge-platform"),
-      captcha: lower.includes("captcha"),
-      accessDenied: lower.includes("access denied") || lower.includes("forbidden"),
-      rateLimit: lower.includes("too many requests"),
-    };
-    out.exempleDonneesEvenement = $("tr[data-event]")
-      .slice(0, 2)
-      .map((_, el) => $(el).text().replace(/\s+/g, " ").trim().slice(0, 160))
-      .get();
-    out.debutCorps = $("body").text().replace(/\s+/g, " ").trim().slice(0, 300);
-  } catch (e) {
-    out.erreur = e.message;
+function extraits(html, mot, n = 3, rayon = 250) {
+  const res = [];
+  let idx = 0;
+  while (res.length < n) {
+    idx = html.indexOf(mot, idx);
+    if (idx === -1) break;
+    res.push(html.slice(Math.max(0, idx - rayon), idx + rayon).replace(/\s+/g, " "));
+    idx += mot.length;
   }
-  return out;
+  return res;
 }
 
 export async function GET() {
-  const avecCookies = await sonder("avec cookies (config actuelle)", {
-    "User-Agent": UA,
-    Cookie: cookieHeader(COOKIES),
+  const res = await fetch(CALENDAR_URL, {
+    headers: { "User-Agent": UA, Cookie: cookieHeader(COOKIES) },
   });
-  const sansCookies = await sonder("sans cookies (page brute)", {
-    "User-Agent": UA,
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const classesCalendar = new Set();
+  $("[class]").each((_, el) => {
+    const c = ($(el).attr("class") || "").split(/\s+/);
+    c.forEach((x) => {
+      if (/calendar|event|econ/i.test(x)) classesCalendar.add(x);
+    });
+  });
+
+  const idsCalendar = [];
+  $("[id]").each((_, el) => {
+    const id = $(el).attr("id");
+    if (/calendar|event|econ/i.test(id)) idsCalendar.push(id);
+  });
+
+  const compteurs = {};
+  ["table", "tbody", "thead", "tr", "td", "li", "div", "script", "iframe"].forEach(
+    (t) => (compteurs[t] = $(t).length)
+  );
+
+  const scriptsSrc = $("script[src]")
+    .map((_, el) => $(el).attr("src"))
+    .get()
+    .slice(0, 40);
+
+  // Scripts inline volumineux (donnees embarquees ?)
+  const gros = $("script:not([src])")
+    .map((_, el) => {
+      const t = $(el).html() || "";
+      return t.length > 5000
+        ? { longueur: t.length, debut: t.slice(0, 200).replace(/\s+/g, " ") }
+        : null;
+    })
+    .get()
+    .filter(Boolean)
+    .slice(0, 10);
+
+  const motsCles = {};
+  [
+    "data-event",
+    "calendar-iso",
+    "calendar-item",
+    "Interest Rate Decision",
+    "Retail Sales",
+    "Nonfarm",
+    "__NEXT_DATA__",
+    "/ws/",
+    "calendar/",
+    "fetch(",
+    "XMLHttpRequest",
+    "calendar-range",
+  ].forEach((m) => {
+    motsCles[m] = { occurrences: html.split(m).length - 1, extraits: extraits(html, m, 2) };
   });
 
   return NextResponse.json({
     horodatage: new Date().toISOString(),
-    avecCookies,
-    sansCookies,
+    status: res.status,
+    htmlLength: html.length,
+    compteurs,
+    classesCalendar: [...classesCalendar].slice(0, 60),
+    idsCalendar: idsCalendar.slice(0, 40),
+    scriptsSrc,
+    grosScriptsInline: gros,
+    motsCles,
+    corpsApresScripts: $("body")
+      .clone()
+      .find("script,style,noscript")
+      .remove()
+      .end()
+      .text()
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 1200),
   });
 }
