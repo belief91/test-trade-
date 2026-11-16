@@ -11,8 +11,15 @@
 // (matrice) - ajouter une banque = une ligne dans BANQUES_FLUX, une ligne
 // dans la matrice, et son scraperXxxAvecMeta cote Render.
 //
-// La Fed n'est pas ici : elle a deja son flux (app/api/test/central-bank-fed),
-// lu par app/api/cron/bc-state.
+// La Fed passe par ce flux (Render /scrape/central-bank-meta -> testScraperFed) :
+// la deduplication se fait a l'ecriture dans bc_documents, plus de fichier brut
+// de ~770 entrees reecrit a chaque categorie. L'ancienne route de prototype
+// (app/api/test/central-bank-fed) est conservee mais n'est plus lue.
+//
+// ALERTE : la route renvoie HTTP 500 quand AUCUNE categorie n'a pu etre
+// scrapee (Render ou source indisponible) - le job GitHub Actions echoue et
+// GitHub previent par e-mail. Une categorie isolee en erreur (ex: minutes ECB
+// hors fenetre RSS) reste normale et renvoie 200.
 //
 // La logique vit dans lib/bc-state/bc-flux.js. Aucun appel IA ici.
 
@@ -25,7 +32,7 @@ import { executerFlux } from "../../../../lib/bc-state/bc-flux";
 
 export const maxDuration = 120;
 
-const BANQUES_FLUX = ["ECB"];
+const BANQUES_FLUX = ["Fed", "ECB"];
 
 export async function GET(request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -61,8 +68,10 @@ export async function GET(request) {
       erreurReference = error.message;
     }
 
+    const aucunSucces = entrees.every((e) => e.status === "error");
+
     return NextResponse.json({
-      status: "ok",
+      status: aucunSucces ? "erreur" : "ok",
       banque,
       horodatageRun,
       resultats: entrees.map((e) => ({
@@ -76,7 +85,7 @@ export async function GET(request) {
       ingestion,
       reference,
       erreurReference,
-    });
+    }, { status: aucunSucces ? 500 : 200 });
   } catch (error) {
     console.error(`[bc-flux] ${banque} :`, error);
     return NextResponse.json({ status: "error", banque, message: error.message }, { status: 500 });
