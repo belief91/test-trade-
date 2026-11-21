@@ -17,12 +17,12 @@ on:
   # TEST ISOLÉ (29/08) — central-bank-fed, 4x/jour, 6h GMT+3 d'écart :
     # 03h00, 09h00, 15h00, 21h00 GMT+3.
     - cron: "0 0,6,12,18 * * *"
-    # État BC Fed (ingestion + analyse IA seulement s'il y a un document
-    # jamais analysé) : 20 min après le scraping test ci-dessus, soit
+    # État BC Fed (référence + analyse IA seulement s'il y a un document
+    # jamais analysé) : 10 min après le flux continu ci-dessous, soit
     # 03h20, 09h20, 15h20, 21h20 GMT+3.
     - cron: "20 0,6,12,18 * * *"
-    # Flux continu BC (ECB, puis les autres banques au fil de leur migration) :
-    # 10 min après le scraping test Fed, soit 03h10, 09h10, 15h10, 21h10 GMT+3.
+    # Flux continu BC (Fed ; les autres banques s'ajoutent à la matrice du job
+    # bc-flux au fil de leur migration) : 03h10, 09h10, 15h10, 21h10 GMT+3.
     - cron: "10 0,6,12,18 * * *"
     # Reconnaissance BC (matin) : 03h00 UTC = 06h00 GMT+3
     - cron: "0 3 * * *"
@@ -180,9 +180,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        banque: [ECB]
+        banque: [Fed]
     steps:
-      - name: "Flux continu BC ${{ matrix.banque }} — scraping Render vers bc_documents (10 min après le scraping test Fed)"
+      - name: "Flux continu BC ${{ matrix.banque }} — scraping Render vers bc_documents (03h10/09h10/15h10/21h10 GMT+3)"
         run: |
           curl -sf --max-time 130 "https://test-trade-eosin.vercel.app/api/cron/bc-flux?banque=${{ matrix.banque }}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '20 0,6,12,18 * * *'
     steps:
-      - name: État BC Fed — ingestion + analyse IA si document jamais analysé (20 min après le scraping test)
+      - name: État BC Fed — référence + analyse IA si document jamais analysé (10 min après le flux, 03h20/09h20/15h20/21h20 GMT+3)
         run: |
           curl -sf --max-time 130 https://test-trade-eosin.vercel.app/api/cron/bc-state \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
